@@ -1,0 +1,7 @@
+bot-data*.json
+bot-data.json.tmp
+backups/
+node_modules/
+*.zip
+.env
+.env.*

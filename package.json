@@ -1,0 +1,15 @@
+{
+  "name": "yabot-brief-bot",
+  "version": "4.1.6",
+  "description": "YABOT вЂ” Telegram-Р±РѕС‚ СЃС‚СѓРґС–С— СЃС‚С–РєРµСЂС–РІ: Р±СЂРёС„ РЅР° СЃС‚С–РєРµСЂРїР°Рє, PDF-Р±Р»Р°РЅРє, Р·Р°СЏРІРєРё РІР»Р°СЃРЅРёРєСѓ",
+  "private": true,
+  "type": "module",
+  "main": "bot.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node bot.js",
+    "test": "node --test"
+  }
+}
