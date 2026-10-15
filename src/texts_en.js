@@ -511,6 +511,7 @@ export const quoteDecisionNote = (accepted) => (accepted ? '✅ You approved the
 export const EDIT_ASK = '✏️ What would you like to change?';
 export const EDIT_LABELS = { type: 'Type', qty: 'Quantity', hero: 'Main character', style: 'Style', emotions: 'Emotions and phrases', refs: 'References', contact: 'Contact' };
 export const EDIT_BACK = '◀️ Back to the brief';
+export const REFS_NONE = 'no references';
 export const EDIT_REFS_NOTE = 'Send the references again — they will replace the previous ones.';
 
 // --- Cancelling ---
@@ -676,5 +677,7 @@ export const SITE_CONTINUED = "Let's continue here 🙂 I remember our chat on t
 export const AI_QUOTE_BUTTON = '🚀 Place the order';
 export const aiQuoteLine = (label, price) =>
   `\n\n💰 <b>${label}</b> — ${price}\n<i>The designer will confirm the exact price after the brief.</i>`;
-export const aiPrefilled = (lines) =>
-  `📝 I've already filled in part of the brief from our chat:\n${lines}\n\nI'll ask the rest now, and you can change anything at the end.`;
+export const aiPrefilled = (lines, complete = false) =>
+  complete
+    ? `📝 The brief is already put together from our chat:\n${lines}\n\nCheck the summary below and send it to the designer — you can change anything.`
+    : `📝 I've already filled in part of the brief from our chat:\n${lines}\n\nI'll ask the rest now, and you can change anything at the end.`;

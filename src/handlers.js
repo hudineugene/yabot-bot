@@ -970,11 +970,17 @@ export class BotHandlers {
     if (!chatOn() || !talkedRecently(userId)) return;
     const L = this.t(userId);
     this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    // Бриф у розмові: помічник розпитав усе — підставляємо й стиль, «без референсів» і контакт,
+    // тоді людина одразу бачить підсумок брифу з кнопкою відправки.
+    const styleList = activeStyles();
     let values = await extractFromAgent(userId, [
       { key: 'type', description: 'Які стікери хоче людина: статичні чи анімовані', options: ['static', 'animated'] },
       { key: 'qty', description: 'Скільки стікерів у паку хоче людина', options: ['5', '10', '15-20'] },
       { key: 'hero', description: 'Головний герой стікерів: хто це (людина, тварина, персонаж бренду) і який він — коротко' },
       { key: 'emotions', description: 'Емоції та фрази для стікерів, які людина назвала' },
+      ...(styleList.length ? [{ key: 'style', description: 'Стиль, який людина обрала з запропонованих: ' + styleList.map((s) => `${s.id} — ${s.name}`).join('; '), options: styleList.map((s) => s.id) }] : []),
+      { key: 'refs', description: 'Людина прямо сказала, що референсів (прикладів, фото героя) не буде або вони не потрібні', options: ['none'] },
+      { key: 'contact', description: 'Телефон чи @username для звʼязку, якщо людина сама їх назвала' },
     ]);
     // Людина натиснула «Оформити» під розрахунком помічника — тип і кількість беремо з нього
     const user = this.data.users[String(userId)];
@@ -994,11 +1000,20 @@ export class BotHandlers {
     }
     if (values.hero) { d.hero = String(values.hero).slice(0, MAX_TEXT); filled.push('hero'); }
     if (values.emotions) { d.emotions = String(values.emotions).slice(0, MAX_TEXT); filled.push('emotions'); }
+    const style = values.style && styleList.find((s) => s.id === values.style);
+    if (style) { d.style = { id: style.id, name: style.name, nameEn: style.nameEn || '' }; filled.push('style'); }
+    if (values.refs === 'none') { d.refs = []; filled.push('refs'); }
+    // Контакт: названий у розмові, інакше — Telegram-нік (бот і так на звʼязку з людиною)
+    const nick = this.data.users[String(userId)]?.username;
+    const contact = values.contact ? String(values.contact).slice(0, MAX_SHORT) : nick ? '@' + nick : '';
+    if (contact && filled.length) { d.contact = contact; filled.push('contact'); }
     if (!filled.length) return;
     draft.prefilled = filled;
     sendAgentEvent(userId, 'brief_prefilled', 'Бриф заповнено з розмови');
-    const lines = filled.map((f) => `• ${L.EDIT_LABELS[f] || f}: <b>${escapeHtml(d[{ type: 'stickerType', qty: 'quantity' }[f] || f])}</b>`);
-    await this.send(chatId, L.aiPrefilled(lines.join('\n')));
+    const shown = (f) => (f === 'style' ? d.style.name : f === 'refs' ? L.REFS_NONE : d[{ type: 'stickerType', qty: 'quantity' }[f] || f]);
+    const lines = filled.map((f) => `• ${L.EDIT_LABELS[f] || f}: <b>${escapeHtml(shown(f))}</b>`);
+    const complete = ['type', 'qty', 'hero', 'emotions', 'refs', 'contact'].every((f) => filled.includes(f)) && (filled.includes('style') || !styleList.length);
+    await this.send(chatId, L.aiPrefilled(lines.join('\n'), complete));
   }
 
   async ask(chatId, draft, { resume = false } = {}) {

@@ -752,6 +752,7 @@ export const quoteQuestionStudio = (order) => `💬 У клиента вопро
 export const EDIT_ASK = '✏️ Що змінити?';
 export const EDIT_LABELS = { type: 'Тип', qty: 'Кількість', hero: 'Головний герой', style: 'Стиль', emotions: 'Емоції та фрази', refs: 'Референси', contact: 'Контакт' };
 export const EDIT_BACK = '◀️ Назад до брифу';
+export const REFS_NONE = 'без референсів';
 export const EDIT_REFS_NOTE = 'Надішліть референси заново — попередні замінимо новими.';
 
 // --- Скасування заявки клієнтом ---
@@ -927,5 +928,7 @@ export const SITE_CONTINUED = 'Продовжимо тут 🙂 Я памʼят�
 export const AI_QUOTE_BUTTON = '🚀 Оформити замовлення';
 export const aiQuoteLine = (label, price) =>
   `\n\n💰 <b>${label}</b> — ${price}\n<i>Точну ціну підтвердить дизайнер після брифу.</i>`;
-export const aiPrefilled = (lines) =>
-  `📝 Дещо з брифу я вже заповнив за нашою розмовою:\n${lines}\n\nРешту спитаю зараз, а в кінці все можна змінити.`;
+export const aiPrefilled = (lines, complete = false) =>
+  complete
+    ? `📝 Бриф уже зібрано з нашої розмови:\n${lines}\n\nПеревірте підсумок нижче й надішліть дизайнеру — будь-що можна змінити.`
+    : `📝 Дещо з брифу я вже заповнив за нашою розмовою:\n${lines}\n\nРешту спитаю зараз, а в кінці все можна змінити.`;
