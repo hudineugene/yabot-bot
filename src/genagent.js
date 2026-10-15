@@ -207,7 +207,7 @@ export function teamNow(userId, now = new Date()) {
  * Запитати агента. Повертає { reply, handoff, summary } або null (вимкнено, агент недоступний чи не відповів) —
  * тоді бот поводиться як раніше: частi питання й передача питання студії.
  */
-export async function askAgent(from, text, context, messageId, image, earlier) {
+export async function askAgent(from, text, context, messageId, image, earlier, voiceReply = false) {
   const s = chatOn();
   if (!s) return null;
   try {
@@ -226,6 +226,8 @@ export async function askAgent(from, text, context, messageId, image, earlier) {
         team: teamNow(from.id),
         // людина написала кілька повідомлень поспіль: попередні (кожне зі своїм номером у журналі), відповідь — одна на всі
         ...(earlier?.length ? { earlier: earlier.slice(-10).map((e) => ({ text: String(e.text).slice(0, 4000), ...(e.messageId ? { messageId: e.messageId } : {}) })) } : {}),
+        // людина спитала голосовим — помічник відповість і голосовим (якщо в GenAgent увімкнено)
+        ...(voiceReply ? { voiceReply: true } : {}),
       }),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
@@ -236,7 +238,9 @@ export async function askAgent(from, text, context, messageId, image, earlier) {
     // upset — помічник передав незадоволену людину: студія бачить позначку «першочергово»
     const upset = Boolean(data.upset);
     if (!data.reply) return data.handoff ? { reply: null, handoff: true, summary: data.summary || null, upset, actions } : null;
-    return { reply: String(data.reply), handoff: Boolean(data.handoff), summary: data.summary || null, upset, actions };
+    // голосова відповідь (OGG/Opus, base64) — бот надішле її голосовим, текст — підписом
+    const voice = data.voice && typeof data.voice.data === 'string' ? Buffer.from(data.voice.data, 'base64') : null;
+    return { reply: String(data.reply), handoff: Boolean(data.handoff), summary: data.summary || null, upset, actions, ...(voice?.length ? { voice } : {}) };
   } catch (err) {
     const message = err.name === 'TimeoutError' ? 'агент не ответил за минуту' : err.message === 'fetch failed' ? 'нет связи с агентом' : err.message;
     if (s.chatError !== message) log.warn(`GenAgent (помощник): ${message}`);

@@ -471,7 +471,7 @@ export class BotHandlers {
     }
     await this.send(m.chat.id, `🎙 <i>${escapeHtml(r.text)}</i>`);
     if (r.text.length < 3) return false;
-    return this.answerQuestion({ ...m, text: r.text, journalId: `${incomingId(m)}:text` });
+    return this.answerQuestion({ ...m, text: r.text, journalId: `${incomingId(m)}:text` }, [], { voice: true });
   }
 
   // --- Часті питання ---
@@ -491,7 +491,7 @@ export class BotHandlers {
    * Питання людини без замовлення до ІІ-помічника (агент GenAgent). Повертає { reply, handoff } або null,
    * якщо помічник вимкнений чи не відповів. Потрібен менеджер — питання йде студії разом із підсумком розмови.
    */
-  async consult(chatId, from, text, context, messageId, image, earlier = []) {
+  async consult(chatId, from, text, context, messageId, image, earlier = [], voiceReply = false) {
     if (!chatOn()) return null;
     const whole = [...earlier.map((e) => e.text), text].join('\n');
     // Розмову веде менеджер з GenAgent — помічник мовчить, повідомлення йде менеджеру в «Діалоги»
@@ -503,7 +503,8 @@ export class BotHandlers {
       return { reply: null, handoff: true, manager: true, actions: [] };
     }
     if (chatId) this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
-    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId, image, earlier);
+    if (chatId && voiceReply) this.tg.call('sendChatAction', { chat_id: chatId, action: 'record_voice' }).catch(() => {});
+    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId, image, earlier, voiceReply);
     if (!r) return null;
     addAiHistory(from.id, 'client', image ? `📷 ${text}`.trim() : whole);
     if (r.reply) addAiHistory(from.id, 'ai', r.reply);
@@ -616,6 +617,21 @@ export class BotHandlers {
     }, wait);
   }
 
+  /** Відповідь помічника голосовим: підпис — текст (до 1024 символів), інакше текст окремо. false — не вдалося. */
+  async sendVoiceReply(chatId, voice, html, markup) {
+    try {
+      const short = html.length <= 1024;
+      await asAuthor('agent', () => this.tg.sendFile('sendVoice', 'voice', chatId, voice, 'reply.ogg', 'audio/ogg',
+        short ? { caption: html, parse_mode: 'HTML', ...(markup ? { reply_markup: markup } : {}) } : {}));
+      this.data.stats.messagesSent++;
+      if (!short) await asAuthor('agent', () => this.send(chatId, html, markup));
+      return true;
+    } catch (err) {
+      log.warn(`Голосова відповідь не надіслана: ${err.message}`);
+      return false;
+    }
+  }
+
   /** Дочекатися відповідей на всі пачки, що вже чекають (зупинка бота, перевірки). */
   async settleQuestions() {
     for (const cur of (this.pendingQuestions || new Map()).values()) clearTimeout(cur.timer);
@@ -629,7 +645,7 @@ export class BotHandlers {
     await Promise.all([...(this.questionRuns || new Map()).values()]);
   }
 
-  async answerQuestion(m, earlier = []) {
+  async answerQuestion(m, earlier = [], { voice = false } = {}) {
     const L = this.t(m.from.id);
     const user = this.data.users[String(m.from.id)];
     // Уся пачка одним текстом — для частих питань, передачі студії й історії
@@ -637,10 +653,14 @@ export class BotHandlers {
     if (user) user.lastQuestion = whole.slice(0, 1000);
     // Номер у журналі: те саме повідомлення, що вже записане журналом (голосове — окремий запис для розшифровки)
     const messageId = m.journalId || (m.message_id ? incomingId(m) : undefined);
-    const ai = await this.consult(m.chat.id, m.from, m.text, undefined, messageId, undefined, earlier);
+    const ai = await this.consult(m.chat.id, m.from, m.text, undefined, messageId, undefined, earlier, voice);
     if (ai?.reply) {
       const quote = this.aiQuote(m.from.id, ai.actions);
-      await asAuthor('agent', () => this.send(m.chat.id, escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : ''), this.aiMarkup(m.from.id, ai.actions || [])));
+      const body = escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : '');
+      const markup = this.aiMarkup(m.from.id, ai.actions || []);
+      // На голосове — голосовим (текст підписом; довгий — окремим повідомленням з кнопками)
+      if (ai.voice && (await this.sendVoiceReply(m.chat.id, ai.voice, body, markup))) return true;
+      await asAuthor('agent', () => this.send(m.chat.id, body, markup));
       return true;
     }
     if (ai?.manager) {
