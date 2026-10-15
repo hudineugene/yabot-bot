@@ -499,7 +499,7 @@ export class BotHandlers {
     if (chatId) this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
     const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId, image);
     if (!r) return null;
-    addAiHistory(from.id, 'client', text);
+    addAiHistory(from.id, 'client', image ? `📷 ${text}`.trim() : text);
     if (r.reply) addAiHistory(from.id, 'ai', r.reply);
     if (r.handoff) await this.forwardQuestion(from.id, from, text, { summary: r.summary, quiet: Boolean(r.reply), upset: r.upset });
     store.save();

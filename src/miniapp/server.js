@@ -15,6 +15,8 @@ import { readUpload } from '../channel.js';
 import { CLIENT_HTML, CLIENT_CSS, CLIENT_JS } from './client.js';
 
 const MAX_BODY = 64 * 1024;
+// Чат помічника: фото (до ~1280 px) і голосове (WAV до 2 хвилин) у base64
+const MAX_CONSULT_BODY = 6 * 1024 * 1024;
 const MAX_UPLOAD = 12 * 1024 * 1024;
 const CACHE_LIMIT = 40 * 1024 * 1024;
 const SET_TTL = 60 * 60 * 1000;
@@ -243,8 +245,8 @@ export class MiniServer {
     return this.send(res, 200, buf, name.endsWith('.svg') ? 'image/svg+xml' : 'image/webp', { 'cache-control': 'public, max-age=604800' });
   }
 
-  async readBody(req) {
-    const buf = await this.readStream(req, MAX_BODY, 'Too large');
+  async readBody(req, max = MAX_BODY) {
+    const buf = await this.readStream(req, max, 'Too large');
     let body;
     try { body = JSON.parse(buf.toString('utf8') || '{}'); } catch { throw new MiniError('Bad JSON'); }
     // Обробники чекають об'єкт: null, число чи масив — помилка запиту, а не збій сервера
@@ -261,7 +263,7 @@ export class MiniServer {
     if (name === 'upload') return this.upload(req, res, from);
     if (name === 'voice') return this.voice(req, res, from);
     if (name === 'studio/final') return this.studioFinal(req, res, from);
-    const body = await this.readBody(req);
+    const body = await this.readBody(req, name === 'consult' ? MAX_CONSULT_BODY : MAX_BODY);
     // Студія: власник і дизайнери
     if (name.startsWith('studio/')) {
       const studio = { 'studio/boot': 'boot', 'studio/order': 'order', 'studio/action': 'action', 'studio/finance': 'finance' }[name];

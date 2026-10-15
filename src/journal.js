@@ -123,9 +123,9 @@ export function recordCallback(cb) {
 }
 
 /** Повідомлення в Mini App (не повідомлення Telegram): свій номер, той самий передається помічнику. */
-export function recordApp(userId, dir, text, { by, id } = {}) {
+export function recordApp(userId, dir, text, { by, id, kind = 'text', thumb } = {}) {
   const itemId = id || `app:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
-  push(userId, { id: itemId, dir, ...(dir === 'out' && by ? { by } : {}), kind: 'text', text, at: Date.now() });
+  push(userId, { id: itemId, dir, ...(dir === 'out' && by ? { by } : {}), kind, text, at: Date.now(), ...(thumb ? { thumb, thumbType: 'image/jpeg' } : {}) });
   return itemId;
 }
 

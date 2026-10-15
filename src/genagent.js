@@ -284,13 +284,18 @@ export async function linkFromSite(token, from) {
 }
 
 export const VOICE_MAX_SEC = 120;
-export async function transcribeVoice(audio, userId) {
+/** Голосове з Mini App (WAV, записаний у браузері; base64) → текст. Як transcribeVoice, але формат wav. */
+export async function transcribeWav(base64, userId) {
+  return transcribeVoice(Buffer.from(base64, 'base64'), userId, 'wav');
+}
+
+export async function transcribeVoice(audio, userId, format = 'ogg') {
   const s = chatOn();
   if (!s || !audio?.length) return null;
   try {
     const res = await fetch(`${s.url}/transcribe`, {
       method: 'POST', headers: authHeaders(s),
-      body: JSON.stringify({ user: { id: String(userId) }, audio: Buffer.from(audio).toString('base64'), format: 'ogg', language: store.data.users[String(userId)]?.lang || 'uk' }),
+      body: JSON.stringify({ user: { id: String(userId) }, audio: Buffer.from(audio).toString('base64'), format, language: store.data.users[String(userId)]?.lang || 'uk' }),
       // перше голосове після паузи чекає завантаження моделі (~30 с)
       signal: AbortSignal.timeout(90 * 1000),
     });

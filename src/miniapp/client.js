@@ -293,6 +293,8 @@ select.sel { appearance: none; -webkit-appearance: none; background-image: linea
 .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #EF4444; animation: recblink 1s infinite; flex: 0 0 10px; }
 @keyframes recblink { 50% { opacity: .25; } }
 .chat-bar .mic .ic { width: 21px; height: 21px; }
+.chat-file { display: none; }
+.bubble .ai-photo { display: block; max-width: 220px; max-height: 240px; border-radius: 12px; margin: 2px 0 6px; object-fit: cover; }
 .fix-card { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
 .fix-card small { display: block; margin-top: 2px; }
 .fix-card .btn { flex: 0 0 auto; white-space: nowrap; }
@@ -618,7 +620,7 @@ export const CLIENT_JS = String.raw`
   var openCustom = false, showPromo = false, briefError = '', briefDone = null, aiBusy = false, aiTries = 0;
   var changesOpen = {}, svcTab = 'about', catQuery = '', catChip = '', chatTimer = null, chatNew = {};
 
-  var ICONS = {"arrow-right": "<path d=\"M3 12h18m-7-7 7 7-7 7\"/>", "bell": "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4\"/>", "bot": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"14\" rx=\"5\"/><path d=\"M12 7V3M9 3h6\"/><circle cx=\"9\" cy=\"14\" r=\"1\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"14\" r=\"1\" fill=\"currentColor\"/>", "calendar": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 3v4M17 3v4M3 10h18\"/>", "catalog": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/>", "characters": "<circle cx=\"9\" cy=\"8\" r=\"4\"/><path d=\"M2 21v-2a7 7 0 0 1 14 0v2\"/><path d=\"M17 5a4 4 0 0 1 0 7M18 15a6 6 0 0 1 4 6\"/>", "check-circle": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"m7 12 3.5 3.5L17 9\"/>", "check": "<path d=\"m4 12 5 5L20 6\"/>", "chevron-left": "<path d=\"m15 5-7 7 7 7\"/>", "chevron-right": "<path d=\"m9 5 7 7-7 7\"/>", "clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 6v6l4 3\"/>", "close": "<path d=\"M5 5 19 19M19 5 5 19\"/>", "download": "<path d=\"M12 3v13m-5-5 5 5 5-5M4 18v3h16v-3\"/>", "edit": "<path d=\"M3 21l4-1 13-13-3-3L4 17l-1 4zM15 6l3 3\"/>", "external": "<path d=\"M14 4h6v6M20 4l-10 10M18 14v6H4V6h6\"/>", "eye": "<path d=\"M2 12Q12 1 22 12 12 23 2 12Z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>", "files": "<path d=\"M4 7V4a2 2 0 0 1 2-2h4l2 3h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z\"/>", "filter": "<path d=\"M3 6h18M6 12h12M9 18h6\"/>", "heart": "<path d=\"M20 5a5 5 0 0 0-8 1 5 5 0 0 0-8-1C-2 12 12 22 12 22S26 12 20 5Z\"/>", "help": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M9 9a3 3 0 1 1 5 2c-2 1-2 2-2 4M12 18h.01\"/>", "home": "<path d=\"m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z\"/>", "info": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6M12 7h.01\"/>", "menu": "<path d=\"M4 6h16M4 12h16M4 18h16\"/>", "message": "<path d=\"M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 1 1 21 11.5Z\"/>", "orders": "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"2\"/><path d=\"M9 8h6M9 12h6M9 16h4\"/>", "paperclip": "<path d=\"m8 12 6-6a4 4 0 0 1 6 6l-9 9a6 6 0 0 1-8-8l9-9\"/>", "plus": "<path d=\"M12 4v16M4 12h16\"/>", "refresh": "<path d=\"M20 9a8 8 0 0 0-14-4L3 8m0-5v5h5M4 15a8 8 0 0 0 14 4l3-3m0 5v-5h-5\"/>", "search": "<circle cx=\"10\" cy=\"10\" r=\"7\"/><path d=\"m15 15 6 6\"/>", "send": "<path d=\"m22 2-7 20-4-9-9-4 20-7ZM11 13l11-11\"/>", "settings": "<circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2\"/>", "shield": "<path d=\"m12 2 8 3v6c0 6-4 9-8 11-4-2-8-5-8-11V5z\"/>", "sticker": "<path d=\"M5 2h10l6 6v11a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z\"/><path d=\"M15 2v6h6\"/><circle cx=\"8\" cy=\"12\" r=\".7\" fill=\"currentColor\"/><circle cx=\"14\" cy=\"12\" r=\".7\" fill=\"currentColor\"/><path d=\"M7.5 16q3.5 3 7 0\"/>", "trash": "<path d=\"M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6\"/>", "upload": "<path d=\"M12 16V3m-5 5 5-5 5 5M4 17v4h16v-4\"/>", "mic": "<rect x=\"9\" y=\"3\" width=\"6\" height=\"11\" rx=\"3\"/><path d=\"M5 11a7 7 0 0 0 14 0M12 18v3\"/>", "wallet": "<rect x=\"3\" y=\"6\" width=\"18\" height=\"14\" rx=\"3\"/><path d=\"M3 10h18M16 15h2M6 6l9-3 1 3\"/>", "user": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21v-2a8 8 0 0 1 16 0v2\"/>"};
+  var ICONS = {"arrow-right": "<path d=\"M3 12h18m-7-7 7 7-7 7\"/>", "bell": "<path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4\"/>", "bot": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"14\" rx=\"5\"/><path d=\"M12 7V3M9 3h6\"/><circle cx=\"9\" cy=\"14\" r=\"1\" fill=\"currentColor\"/><circle cx=\"15\" cy=\"14\" r=\"1\" fill=\"currentColor\"/>", "calendar": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2\"/><path d=\"M7 3v4M17 3v4M3 10h18\"/>", "catalog": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/>", "characters": "<circle cx=\"9\" cy=\"8\" r=\"4\"/><path d=\"M2 21v-2a7 7 0 0 1 14 0v2\"/><path d=\"M17 5a4 4 0 0 1 0 7M18 15a6 6 0 0 1 4 6\"/>", "check-circle": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"m7 12 3.5 3.5L17 9\"/>", "check": "<path d=\"m4 12 5 5L20 6\"/>", "chevron-left": "<path d=\"m15 5-7 7 7 7\"/>", "chevron-right": "<path d=\"m9 5 7 7-7 7\"/>", "clock": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 6v6l4 3\"/>", "close": "<path d=\"M5 5 19 19M19 5 5 19\"/>", "download": "<path d=\"M12 3v13m-5-5 5 5 5-5M4 18v3h16v-3\"/>", "edit": "<path d=\"M3 21l4-1 13-13-3-3L4 17l-1 4zM15 6l3 3\"/>", "external": "<path d=\"M14 4h6v6M20 4l-10 10M18 14v6H4V6h6\"/>", "eye": "<path d=\"M2 12Q12 1 22 12 12 23 2 12Z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>", "files": "<path d=\"M4 7V4a2 2 0 0 1 2-2h4l2 3h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z\"/>", "filter": "<path d=\"M3 6h18M6 12h12M9 18h6\"/>", "heart": "<path d=\"M20 5a5 5 0 0 0-8 1 5 5 0 0 0-8-1C-2 12 12 22 12 22S26 12 20 5Z\"/>", "help": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M9 9a3 3 0 1 1 5 2c-2 1-2 2-2 4M12 18h.01\"/>", "home": "<path d=\"m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z\"/>", "info": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 11v6M12 7h.01\"/>", "menu": "<path d=\"M4 6h16M4 12h16M4 18h16\"/>", "message": "<path d=\"M21 11.5a8.5 8.5 0 0 1-8.5 8.5 9 9 0 0 1-4-.9L3 21l1.9-5.5a9 9 0 0 1-.9-4A8.5 8.5 0 1 1 21 11.5Z\"/>", "orders": "<rect x=\"5\" y=\"3\" width=\"14\" height=\"18\" rx=\"2\"/><path d=\"M9 8h6M9 12h6M9 16h4\"/>", "paperclip": "<path d=\"m8 12 6-6a4 4 0 0 1 6 6l-9 9a6 6 0 0 1-8-8l9-9\"/>", "plus": "<path d=\"M12 4v16M4 12h16\"/>", "refresh": "<path d=\"M20 9a8 8 0 0 0-14-4L3 8m0-5v5h5M4 15a8 8 0 0 0 14 4l3-3m0 5v-5h-5\"/>", "search": "<circle cx=\"10\" cy=\"10\" r=\"7\"/><path d=\"m15 15 6 6\"/>", "send": "<path d=\"m22 2-7 20-4-9-9-4 20-7ZM11 13l11-11\"/>", "settings": "<circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2\"/>", "shield": "<path d=\"m12 2 8 3v6c0 6-4 9-8 11-4-2-8-5-8-11V5z\"/>", "sticker": "<path d=\"M5 2h10l6 6v11a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z\"/><path d=\"M15 2v6h6\"/><circle cx=\"8\" cy=\"12\" r=\".7\" fill=\"currentColor\"/><circle cx=\"14\" cy=\"12\" r=\".7\" fill=\"currentColor\"/><path d=\"M7.5 16q3.5 3 7 0\"/>", "trash": "<path d=\"M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6\"/>", "upload": "<path d=\"M12 16V3m-5 5 5-5 5 5M4 17v4h16v-4\"/>", "mic": "<rect x=\"9\" y=\"3\" width=\"6\" height=\"11\" rx=\"3\"/><path d=\"M5 11a7 7 0 0 0 14 0M12 18v3\"/>", "camera": "<path d=\"M4 8h3l2-3h6l2 3h3v11H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>", "wallet": "<rect x=\"3\" y=\"6\" width=\"18\" height=\"14\" rx=\"3\"/><path d=\"M3 10h18M16 15h2M6 6l9-3 1 3\"/>", "user": "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21v-2a8 8 0 0 1 16 0v2\"/>"};
   var I18N = {
     uk: {
       home: 'Головна', catalog: 'Послуги', orders: 'Замовлення', profile: 'Профіль',
@@ -629,7 +631,7 @@ export const CLIENT_JS = String.raw`
       myProjects: 'Мої проєкти', allOrders: 'Усі замовлення', stage: 'Етап', noProjects: 'Проєктів поки немає', noProjectsText: 'Створіть замовлення — і тут з’явиться ваш проєкт із прогресом.',
       ourWorks: 'Наші роботи', howItWorks: 'Як це працює', hw1: 'Ідея', hw1t: 'Обговорюємо ваші задачі', hw2: 'Дизайн', hw2t: 'Створюємо концепцію', hw3: 'Результат', hw3t: 'Ви отримуєте готовий продукт',
       needHelp: 'Потрібна допомога?', needHelpText: 'Відповімо на всі ваші питання у Telegram.', writeUs: 'Написати нам', portfolio: 'Портфоліо', worksStickers: 'Стікерпаки', worksBots: 'Telegram-боти', worksChars: 'Персонажі',
-      pr_new: 'Дизайнер вивчає бриф', pr_work: 'Робота над проєктом', pr_sketch: 'Погодження ескізів', pr_changes: 'Вносимо правки', pr_final: 'Фінальна версія', pr_done: 'Готово', stageOf: 'Етап {n} з {m}', fixTitle: 'Щось варто виправити?', fixText: 'Опишіть правку — дизайнер внесе зміни. Можна до {d}.', fixBtn: 'Потрібна правка', fixPh: 'Що саме поправити?', fixSend: 'Надіслати правку', fixWait: 'Правку прийнято — дизайнер працює над нею', fixDoneT: 'Правку внесено', likeBtn: 'Хочу так само', likeTag: 'Як у прикладі', likeRow: 'Як у прикладі', micDenied: 'Немає доступу до мікрофона. Дозвольте його Telegram у налаштуваннях телефону або надішліть голосове в чаті бота.', recShort: 'Запис закороткий', recording: 'Запис… до 2 хв', planTitle: 'План оплати', planStage: 'Етап «{s}»', pl_paid: '✅ Оплачено', pl_awaiting: '⏳ Очікує оплати', pl_due: 'До оплати', pl_later: 'Пізніше', rpHint: '🎁 За відгук — промокод −{p}% на наступне замовлення', rpGot: 'Ваш промокод на наступне замовлення', rpAuto: 'Підставиться в наступну заявку сам', replyMin: 'Зазвичай відповідаємо за ~{n} хв', replyHour: 'Зазвичай відповідаємо за ~{n} год', qTitle: 'Коли почнемо', qSoon: 'Можемо взятися вже найближчими днями 🚀', qDays: ['Почнемо приблизно через {n} день', 'Почнемо приблизно через {n} дні', 'Почнемо приблизно через {n} днів'], qOpen: ['Зараз у роботі {n} проєкт.', 'Зараз у роботі {n} проєкти.', 'Зараз у роботі {n} проєктів.'], qNote: 'Точний термін дизайнер підтвердить у кошторисі.', newMsgs: ['{n} нове повідомлення', '{n} нові повідомлення', '{n} нових повідомлень'], newDivider: 'Нові повідомлення', bnUntil: 'Діє до {d}', bnCode: 'Промокод', bnOrder: 'Замовити', pkgQ: 'Пакет', pkgNone: 'Без пакета — обговоримо', pkgNoneHint: 'Дизайнер підбере рішення під задачу', pkgsTitle: 'Пакети', stCheck: 'Перевірте етап', stOk: 'Все добре', stChanges: 'Є зауваження', stChangesPh: 'Що варто змінити?', stOpen: 'Відкрити демо', stSend: 'Надіслати', stAccepted: 'Ви прийняли цей етап', stCommented: 'Ви залишили зауваження', aiHelp: 'Допоможіть з ідеями', aiMore: 'Ще ідеї', aiThinking: 'Підбираємо ідеї…', aiNeedHero: 'Спершу опишіть головного героя', aiNeedTitle: 'Спершу вкажіть назву проєкту', aiDone: 'Готово! Відредагуйте, як вам зручно', aiNote: 'Ідеї від ІІ — можна змінювати як завгодно', more2: 'Ще {n}', yourAction: 'Ваша дія',
+      pr_new: 'Дизайнер вивчає бриф', pr_work: 'Робота над проєктом', pr_sketch: 'Погодження ескізів', pr_changes: 'Вносимо правки', pr_final: 'Фінальна версія', pr_done: 'Готово', stageOf: 'Етап {n} з {m}', fixTitle: 'Щось варто виправити?', fixText: 'Опишіть правку — дизайнер внесе зміни. Можна до {d}.', fixBtn: 'Потрібна правка', fixPh: 'Що саме поправити?', fixSend: 'Надіслати правку', fixWait: 'Правку прийнято — дизайнер працює над нею', fixDoneT: 'Правку внесено', likeBtn: 'Хочу так само', likeTag: 'Як у прикладі', likeRow: 'Як у прикладі', micDenied: 'Немає доступу до мікрофона. Дозвольте його Telegram у налаштуваннях телефону або надішліть голосове в чаті бота.', recShort: 'Запис закороткий', recording: 'Запис… до 2 хв', planTitle: 'План оплати', planStage: 'Етап «{s}»', pl_paid: '✅ Оплачено', pl_awaiting: '⏳ Очікує оплати', pl_due: 'До оплати', pl_later: 'Пізніше', rpHint: '🎁 За відгук — промокод −{p}% на наступне замовлення', rpGot: 'Ваш промокод на наступне замовлення', rpAuto: 'Підставиться в наступну заявку сам', replyMin: 'Зазвичай відповідаємо за ~{n} хв', replyHour: 'Зазвичай відповідаємо за ~{n} год', qTitle: 'Коли почнемо', qSoon: 'Можемо взятися вже найближчими днями 🚀', qDays: ['Почнемо приблизно через {n} день', 'Почнемо приблизно через {n} дні', 'Почнемо приблизно через {n} днів'], qOpen: ['Зараз у роботі {n} проєкт.', 'Зараз у роботі {n} проєкти.', 'Зараз у роботі {n} проєктів.'], qNote: 'Точний термін дизайнер підтвердить у кошторисі.', newMsgs: ['{n} нове повідомлення', '{n} нові повідомлення', '{n} нових повідомлень'], newDivider: 'Нові повідомлення', bnUntil: 'Діє до {d}', bnCode: 'Промокод', bnOrder: 'Замовити', pkgQ: 'Пакет', pkgNone: 'Без пакета — обговоримо', pkgNoneHint: 'Дизайнер підбере рішення під задачу', pkgsTitle: 'Пакети', stCheck: 'Перевірте етап', stOk: 'Все добре', stChanges: 'Є зауваження', stChangesPh: 'Що варто змінити?', stOpen: 'Відкрити демо', stSend: 'Надіслати', stAccepted: 'Ви прийняли цей етап', stCommented: 'Ви залишили зауваження', aiHelp: 'Допоможіть з ідеями', aiMore: 'Ще ідеї', aiThinking: 'Підбираємо ідеї…', aiNeedHero: 'Спершу опишіть головного героя', aiNeedTitle: 'Спершу вкажіть назву проєкту', aiDone: 'Готово! Відредагуйте, як вам зручно', aiNote: 'Ідеї від ІІ — можна змінювати як завгодно', more2: 'Ще {n}', yourAction: 'Ваша дія', aiPhotoBad: 'Не вдалося відкрити фото — спробуйте інше.',
       hello: 'Привіт! Я YABOT', helloName: 'Привіт, {name}!', heroText: 'Допомагаю створювати стильні цифрові продукти для вашого бренду швидко та з любов’ю.',
       createOrder: 'Створити замовлення', from: 'від', order: 'Замовити', next: 'Далі', back: 'Назад',
       catTitle: 'Каталог послуг', catSub: 'Оберіть напрям — і ми допоможемо стартувати швидко.', search: 'Пошук послуг…', nothing: 'Нічого не знайдено',
@@ -682,7 +684,7 @@ export const CLIENT_JS = String.raw`
       myProjects: 'My projects', allOrders: 'All orders', stage: 'Stage', noProjects: 'No projects yet', noProjectsText: 'Create an order — and your project with its progress will appear here.',
       ourWorks: 'Our works', howItWorks: 'How it works', hw1: 'Idea', hw1t: 'We discuss your goals', hw2: 'Design', hw2t: 'We create the concept', hw3: 'Result', hw3t: 'You get a finished product',
       needHelp: 'Need help?', needHelpText: 'We will answer all your questions in Telegram.', writeUs: 'Write to us', portfolio: 'Portfolio', worksStickers: 'Sticker packs', worksBots: 'Telegram bots', worksChars: 'Characters',
-      pr_new: 'The designer is reviewing the brief', pr_work: 'Working on the project', pr_sketch: 'Sketch approval', pr_changes: 'Making changes', pr_final: 'Final version', pr_done: 'Done', stageOf: 'Stage {n} of {m}', fixTitle: 'Something to fix?', fixText: 'Describe the fix — the designer will make the changes. Available until {d}.', fixBtn: 'I need a fix', fixPh: 'What exactly should be fixed?', fixSend: 'Send the fix request', fixWait: 'Fix request received — the designer is working on it', fixDoneT: 'The fix is done', likeBtn: 'I want the same', likeTag: 'Like the example', likeRow: 'Like the example', micDenied: 'No microphone access. Allow it for Telegram in the phone settings or send a voice message in the bot chat.', recShort: 'The recording is too short', recording: 'Recording… up to 2 min', planTitle: 'Payment plan', planStage: 'Stage «{s}»', pl_paid: '✅ Paid', pl_awaiting: '⏳ Awaiting payment', pl_due: 'Due', pl_later: 'Later', rpHint: '🎁 Leave a review — get {p}% off your next order', rpGot: 'Your promo code for the next order', rpAuto: 'It will be applied to your next request automatically', replyMin: 'We usually reply within ~{n} min', replyHour: 'We usually reply within ~{n} h', qTitle: 'When we start', qSoon: 'We can start within the next few days 🚀', qDays: ['We will start in about {n} day', 'We will start in about {n} days', 'We will start in about {n} days'], qOpen: ['{n} project in progress now.', '{n} projects in progress now.', '{n} projects in progress now.'], qNote: 'The designer will confirm the exact timing in the quote.', newMsgs: ['{n} new message', '{n} new messages', '{n} new messages'], newDivider: 'New messages', bnUntil: 'Valid till {d}', bnCode: 'Promo code', bnOrder: 'Order now', pkgQ: 'Package', pkgNone: 'No package — let us discuss', pkgNoneHint: 'The designer will tailor a solution', pkgsTitle: 'Packages', stCheck: 'Check the stage', stOk: 'All good', stChanges: 'I have comments', stChangesPh: 'What should we change?', stOpen: 'Open demo', stSend: 'Send', stAccepted: 'You accepted this stage', stCommented: 'You left comments', aiHelp: 'Help me with ideas', aiMore: 'More ideas', aiThinking: 'Coming up with ideas…', aiNeedHero: 'Describe the main character first', aiNeedTitle: 'Enter the project name first', aiDone: 'Done! Edit it any way you like', aiNote: 'AI suggestions — feel free to change anything', more2: '{n} more', yourAction: 'Action needed',
+      pr_new: 'The designer is reviewing the brief', pr_work: 'Working on the project', pr_sketch: 'Sketch approval', pr_changes: 'Making changes', pr_final: 'Final version', pr_done: 'Done', stageOf: 'Stage {n} of {m}', fixTitle: 'Something to fix?', fixText: 'Describe the fix — the designer will make the changes. Available until {d}.', fixBtn: 'I need a fix', fixPh: 'What exactly should be fixed?', fixSend: 'Send the fix request', fixWait: 'Fix request received — the designer is working on it', fixDoneT: 'The fix is done', likeBtn: 'I want the same', likeTag: 'Like the example', likeRow: 'Like the example', micDenied: 'No microphone access. Allow it for Telegram in the phone settings or send a voice message in the bot chat.', recShort: 'The recording is too short', recording: 'Recording… up to 2 min', planTitle: 'Payment plan', planStage: 'Stage «{s}»', pl_paid: '✅ Paid', pl_awaiting: '⏳ Awaiting payment', pl_due: 'Due', pl_later: 'Later', rpHint: '🎁 Leave a review — get {p}% off your next order', rpGot: 'Your promo code for the next order', rpAuto: 'It will be applied to your next request automatically', replyMin: 'We usually reply within ~{n} min', replyHour: 'We usually reply within ~{n} h', qTitle: 'When we start', qSoon: 'We can start within the next few days 🚀', qDays: ['We will start in about {n} day', 'We will start in about {n} days', 'We will start in about {n} days'], qOpen: ['{n} project in progress now.', '{n} projects in progress now.', '{n} projects in progress now.'], qNote: 'The designer will confirm the exact timing in the quote.', newMsgs: ['{n} new message', '{n} new messages', '{n} new messages'], newDivider: 'New messages', bnUntil: 'Valid till {d}', bnCode: 'Promo code', bnOrder: 'Order now', pkgQ: 'Package', pkgNone: 'No package — let us discuss', pkgNoneHint: 'The designer will tailor a solution', pkgsTitle: 'Packages', stCheck: 'Check the stage', stOk: 'All good', stChanges: 'I have comments', stChangesPh: 'What should we change?', stOpen: 'Open demo', stSend: 'Send', stAccepted: 'You accepted this stage', stCommented: 'You left comments', aiHelp: 'Help me with ideas', aiMore: 'More ideas', aiThinking: 'Coming up with ideas…', aiNeedHero: 'Describe the main character first', aiNeedTitle: 'Enter the project name first', aiDone: 'Done! Edit it any way you like', aiNote: 'AI suggestions — feel free to change anything', more2: '{n} more', yourAction: 'Action needed', aiPhotoBad: 'Could not open the photo — try another one.',
       hello: 'Hi! I am YABOT', helloName: 'Hi, {name}!', heroText: 'I help create stylish digital products for your brand — fast and with love.',
       createOrder: 'Create an order', from: 'from', order: 'Order', next: 'Next', back: 'Back',
       catTitle: 'Services', catSub: 'Pick a direction — we will help you start fast.', search: 'Search services…', nothing: 'Nothing found',
@@ -2116,25 +2118,118 @@ export const CLIENT_JS = String.raw`
         el('p', { class: 'muted' }, S.prices.note || t('pricesNone')))];
   }
   var aiWaiting = null; // текст, що зараз відправляється помічнику
+  var aiWaitingImage = null; // превью фото, що зараз відправляється
+  var aiThumbs = {};    // превью надісланих фото: час повідомлення → картинка (до перезапуску застосунку)
+  var aiRec = null;     // запис голосового для помічника (WAV)
   var aiRated = {};     // відповіді, які людина вже оцінила (за часом відповіді)
   var aiSuggest = [];   // підказки наступного питання від помічника
   var aiQuote = null;   // розрахунок помічника: { typeKey, qtyKey, label, price } — картка з кнопкою оформлення
   function aiPage() {
     var input = el('input', { class: 'chat-input', placeholder: t('aiPh'), maxlength: '1000', onkeydown: function (e) { if (e.key === 'Enter') send(); } });
-    function send() {
-      var text = input.value.trim();
-      if (!text || aiWaiting) return;
-      aiWaiting = text; render(); window.scrollTo(0, document.body.scrollHeight);
-      api('consult', { text: text })
+    function ask(payload, shown, image) {
+      aiWaiting = shown; aiWaitingImage = image || null; render(); window.scrollTo(0, document.body.scrollHeight);
+      return api('consult', payload)
         .then(function (j) {
-          aiWaiting = null;
+          aiWaiting = null; aiWaitingImage = null;
           S.aiChat = j.messages || S.aiChat;
+          if (image) { var mine = (S.aiChat || []).filter(function (m) { return m.from === 'client'; }).pop(); if (mine) aiThumbs[mine.at] = image; }
           aiSuggest = j.suggest || [];
           aiQuote = j.quote || null;
           if (j.forwarded || j.relayed) toast(t('aiForwarded'));
           haptic('ok'); render(); window.scrollTo(0, document.body.scrollHeight);
         })
-        .catch(function (e) { aiWaiting = null; haptic('error'); render(); alertMsg(e.message); input.value = text; });
+        .catch(function (e) { aiWaiting = null; aiWaitingImage = null; haptic('error'); render(); alertMsg(e.message); if (payload.text && !payload.image) input.value = payload.text; });
+    }
+    function send() {
+      var text = input.value.trim();
+      if (!text || aiWaiting !== null) return;
+      ask({ text: text }, text);
+    }
+    // Фото: зменшуємо на телефоні (до 1280 px) і робимо превью; підпис — те, що набрано в полі
+    function shrink(img, max, quality) {
+      var scale = Math.min(1, max / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
+      canvas.height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', quality);
+    }
+    var photoInput = el('input', { type: 'file', accept: 'image/*', class: 'chat-file' });
+    photoInput.addEventListener('change', function () {
+      var file = photoInput.files && photoInput.files[0];
+      photoInput.value = '';
+      if (!file || aiWaiting !== null) return;
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var big = shrink(img, 1280, 0.85);
+        var small = shrink(img, 320, 0.7);
+        URL.revokeObjectURL(url);
+        var caption = input.value.trim();
+        input.value = '';
+        ask({ text: caption, image: { data: big.split(',')[1], thumb: small.split(',')[1] } }, caption, small);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); haptic('error'); alertMsg(t('aiPhotoBad')); };
+      img.src = url;
+    });
+    var photoBtn = el('button', { class: 'clip', disabled: aiWaiting !== null, 'aria-label': 'photo', onclick: function () { photoInput.click(); } }, icon('camera'), photoInput);
+    // Голосове: пишемо звук з мікрофона, на відправці — WAV 16 кГц (однаково на будь-якому телефоні)
+    function canAiRecord() { return Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && (window.AudioContext || window.webkitAudioContext)); }
+    function startAiRec() {
+      if (aiRec || aiWaiting !== null) return;
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+        var ctx = new Ctx();
+        var source = ctx.createMediaStreamSource(stream);
+        var proc = ctx.createScriptProcessor(4096, 1, 1);
+        var cur = { stream: stream, ctx: ctx, proc: proc, chunks: [], start: Date.now() };
+        proc.onaudioprocess = function (e) { cur.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+        source.connect(proc);
+        proc.connect(ctx.destination);
+        aiRec = cur;
+        cur.tick = setInterval(function () {
+          var tEl = document.getElementById('ai-rec-time');
+          if (tEl) tEl.textContent = fmtSec((Date.now() - cur.start) / 1000);
+          if (Date.now() - cur.start > 120000) stopAiRec(true);
+        }, 250);
+        haptic(); render();
+      }).catch(function () { alertMsg(t('micDenied')); });
+    }
+    function stopAiRec(sendIt) {
+      var cur = aiRec;
+      if (!cur) return;
+      aiRec = null;
+      clearInterval(cur.tick);
+      try { cur.proc.disconnect(); } catch (e) { /* уже відключено */ }
+      cur.stream.getTracks().forEach(function (tr) { tr.stop(); });
+      var rate = cur.ctx.sampleRate;
+      try { cur.ctx.close(); } catch (e) { /* уже закрито */ }
+      var total = cur.chunks.reduce(function (n, c) { return n + c.length; }, 0);
+      if (!sendIt) { render(); return; }
+      if (total < rate * 0.7) { toast(t('recShort')); render(); return; }
+      ask({ voice: wavBase64(cur.chunks, total, rate) }, '🎙 …');
+    }
+    // Float32 будь-якої частоти → моно 16 кГц, PCM 16 біт, WAV → base64
+    function wavBase64(chunks, total, rate) {
+      var all = new Float32Array(total);
+      var at = 0;
+      chunks.forEach(function (c) { all.set(c, at); at += c.length; });
+      var n = Math.floor(total * 16000 / rate);
+      var buf = new ArrayBuffer(44 + n * 2);
+      var v = new DataView(buf);
+      function str(o, x) { for (var i = 0; i < x.length; i++) v.setUint8(o + i, x.charCodeAt(i)); }
+      str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+      str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+      str(36, 'data'); v.setUint32(40, n * 2, true);
+      for (var j = 0; j < n; j++) {
+        var pos = j * rate / 16000, k = Math.floor(pos), fr = pos - k;
+        var smp = Math.max(-1, Math.min(1, all[k] * (1 - fr) + (all[k + 1] || 0) * fr));
+        v.setInt16(44 + j * 2, smp < 0 ? smp * 32768 : smp * 32767, true);
+      }
+      var bytes = new Uint8Array(buf), bin = '';
+      for (var b = 0; b < bytes.length; b += 32768) bin += String.fromCharCode.apply(null, bytes.subarray(b, b + 32768));
+      return btoa(bin);
     }
     var list = (S.aiChat || []).slice();
     // Оцінка останньої відповіді помічника (одна на відповідь)
@@ -2147,10 +2242,12 @@ export const CLIENT_JS = String.raw`
     }
     function bubble(from, text, at, extra) {
       var me = from === 'client';
+      var photo = me && at && aiThumbs[at];
       return el('div', { class: 'bwrap ' + (me ? 'me' : 'them') },
         me ? null : el('img', { class: 'ava', src: 'a/stk_wave.webp', alt: '' }),
         el('div', { class: 'bubble' }, me ? null : el('small', { class: 'who' }, from === 'studio' ? t('studio') : t('aiWho')),
-          el('div', { class: 'pre' }, text), at ? el('small', { class: 'when' }, dtime(at)) : extra || null));
+          photo ? el('img', { class: 'ai-photo', src: photo, alt: '' }) : null,
+          el('div', { class: 'pre' }, photo ? text.replace(/^📷\s*/, '') : text), at ? el('small', { class: 'when' }, dtime(at)) : extra || null));
     }
     return [
       pageHead(t('aiTitle')),
@@ -2158,7 +2255,7 @@ export const CLIENT_JS = String.raw`
         bubble('ai', t('aiHello')),
         list.map(function (m, i) {
           var b = bubble(m.from, m.text, m.at);
-          if (i !== lastAi || aiWaiting) return b;
+          if (i !== lastAi || aiWaiting !== null) return b;
           var chips = aiSuggest.length ? el('div', { class: 'ai-suggest' }, aiSuggest.map(function (q) {
             return el('button', { class: 'btn small ghost', onclick: function () { input.value = q; aiSuggest = []; send(); } }, q);
           })) : null;
@@ -2176,9 +2273,17 @@ export const CLIENT_JS = String.raw`
             el('button', { class: 'btn small ghost', onclick: function () { rate(true); } }, '👍'),
             el('button', { class: 'btn small ghost', onclick: function () { rate(false); } }, '👎')), chips];
         }),
-        aiWaiting ? [bubble('client', aiWaiting), bubble('ai', t('aiThinking'), null, el('span', { class: 'spinner sm' }))] : null),
-      el('div', { class: 'chat-bar' }, input,
-        el('button', { class: 'send', disabled: Boolean(aiWaiting), onclick: send, 'aria-label': 'send' }, icon('send')))
+        aiWaiting !== null ? [aiWaitingImage
+          ? el('div', { class: 'bwrap me' }, el('div', { class: 'bubble' }, el('img', { class: 'ai-photo', src: aiWaitingImage, alt: '' }), aiWaiting ? el('div', { class: 'pre' }, aiWaiting) : null))
+          : bubble('client', aiWaiting), bubble('ai', t('aiThinking'), null, el('span', { class: 'spinner sm' }))] : null),
+      aiRec
+        ? el('div', { class: 'chat-bar rec' },
+          el('button', { class: 'clip', 'aria-label': 'cancel', onclick: function () { stopAiRec(false); } }, icon('close')),
+          el('span', { class: 'rec-dot' }), el('b', { id: 'ai-rec-time' }, fmtSec((Date.now() - aiRec.start) / 1000)), el('span', { class: 'muted grow' }, t('recording')),
+          el('button', { class: 'send', 'aria-label': 'send', onclick: function () { stopAiRec(true); } }, icon('send')))
+        : el('div', { class: 'chat-bar' }, el('span', { class: 'att' }, photoBtn), input,
+          canAiRecord() ? el('button', { class: 'clip mic', disabled: aiWaiting !== null, 'aria-label': 'voice', onclick: startAiRec }, icon('mic')) : null,
+          el('button', { class: 'send', disabled: Boolean(aiWaiting), onclick: send, 'aria-label': 'send' }, icon('send')))
     ];
   }
   function askPage() {

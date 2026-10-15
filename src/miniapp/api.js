@@ -19,7 +19,7 @@ import { queueEstimate } from '../queue.js';
 import { clientReplyTime } from '../sla.js';
 import { stagePlanView } from '../payments.js';
 import { fixAllowed, openFix } from '../fixes.js';
-import { chatOn, aiHistory } from '../genagent.js';
+import { chatOn, aiHistory, transcribeWav } from '../genagent.js';
 import { recordApp } from '../journal.js';
 
 const AI_DAILY = 10; // ІІ-підказок на день на клієнта (спільний лічильник із ботом)
@@ -659,17 +659,34 @@ export class MiniApi {
 
   /** Чат з ІІ-помічником у Mini App (спільна історія з чатом бота). Є відкрите замовлення — пишемо дизайнеру, як раніше. */
   async consult(from, body) {
-    const text = clean(body.text, 1000);
-    if (text.length < 2) throw new MiniError(lang(from.id, 'Напишіть питання.', 'Type your question.'));
+    // Фото (зменшене на телефоні, з превью) і голосове (WAV) — у base64
+    const B64 = /^[A-Za-z0-9+/]+=*$/;
+    const image = body.image && typeof body.image.data === 'string' && body.image.data.length <= 4 * 1024 * 1024 && B64.test(body.image.data) ? body.image : null;
+    const thumb = image && typeof image.thumb === 'string' && image.thumb.length <= 400 * 1024 && B64.test(image.thumb) ? image.thumb : '';
+    const voice = typeof body.voice === 'string' && body.voice.length <= 5 * 1024 * 1024 && B64.test(body.voice) ? body.voice : '';
+    let text = clean(body.text, 1000);
+    let heard = '';
+    if (voice) {
+      if (!chatOn()) throw new MiniError(lang(from.id, 'Голосові тут зараз не приймаються — напишіть текстом.', 'Voice messages are not accepted here right now — please type.'));
+      const r = await transcribeWav(voice, from.id);
+      if (!r) throw new MiniError(lang(from.id, 'Не вдалося обробити голосове — спробуйте ще раз або напишіть текстом.', 'Could not process the voice message — try again or type.'), 503);
+      if (!r.text) throw new MiniError(r.reason === 'too_long' ? lang(from.id, 'Голосове довше 2 хвилин — запишіть коротше.', 'Longer than 2 minutes — please record a shorter one.') : lang(from.id, 'Не розібрав слів — спробуйте ще раз або напишіть текстом.', 'Could not make out the words — try again or type.'), 422);
+      heard = r.text;
+      text = clean(r.text, 1000);
+    }
+    if (!image && text.length < 2) throw new MiniError(lang(from.id, 'Напишіть питання.', 'Type your question.'));
     this.h.touchUser(from);
     const open = this.data.inquiries.filter((o) => o.userId === from.id && isOpen(o)).at(-1);
+    // Фото по відкритому замовленню — у чат замовлення (там його побачить дизайнер)
+    if (image && (open || !chatOn())) throw new MiniError(lang(from.id, 'Фото по замовленню надішліть у чаті замовлення (скріпка) — так його побачить дизайнер.', 'Please send photos for your order in the order chat (paperclip) so the designer sees them.'));
     if (open || !chatOn()) {
       await this.question(from, { text });
       return { relayed: Boolean(open), forwarded: !open, messages: aiHistory(from.id) };
     }
     // Журнал переписки: питання з Mini App — з тим самим номером, що отримає помічник; відповідь помічника теж
-    const journalId = recordApp(from.id, 'in', text);
-    const r = await this.h.consult(null, from, text, 'Клієнт пише в Mini App бота (міні-застосунок).', journalId);
+    const journalId = recordApp(from.id, 'in', text, image ? { kind: 'photo', thumb } : voice ? { kind: 'voice' } : {});
+    const context = 'Клієнт пише в Mini App бота (міні-застосунок). Тут він може надіслати й фото (кнопка 📷) та голосове (🎤) — ти побачиш опис фото чи текст голосового.' + (image ? ' Клієнт надіслав фото.' : '');
+    const r = await this.h.consult(null, from, text, context, journalId, image ? { data: image.data, mediaType: 'image/jpeg' } : undefined);
     if (r?.reply) recordApp(from.id, 'out', r.reply, { by: 'agent' });
     if (!r) {
       // Помічник не відповів — передаємо питання студії, як раніше
@@ -680,7 +697,7 @@ export class MiniApi {
     const suggest = (r.actions || []).filter((a) => a.type === 'suggest').map((a) => String(a.value).trim()).filter((t) => t.length >= 3 && t.length <= 60).slice(0, 3);
     // Розрахунок помічника — картка з ціною й кнопкою оформлення
     const quote = this.h.aiQuote(from.id, r.actions);
-    return { messages: aiHistory(from.id), handoff: r.handoff, suggest, quote };
+    return { messages: aiHistory(from.id), handoff: r.handoff, suggest, quote, ...(heard ? { heard } : {}) };
   }
 
   async question(from, body) {
