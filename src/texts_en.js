@@ -138,6 +138,9 @@ export const OPTIONS = {
   qty: { 5: '5 pcs', 10: '10 pcs', '15-20': '15-20 pcs', custom: 'Other amount' },
 };
 
+export const examplesPack = (title) => `🎨 This is our pack «${title}» — see it all and add it to your Telegram:`;
+export const examplesOpen = '👀 Open the pack';
+
 export const CLIENT_STATUS_MESSAGES = {
   in_progress: (id) => `🎨 We're on it — order #${orderNo(id)} is in progress! The designer will message you soon.`,
   done: (id) => `🎉 Order #${orderNo(id)} is ready! Thank you for choosing YABOT 💛`,

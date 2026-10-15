@@ -9,6 +9,7 @@ import { escapeHtml, kyivHour, todayKey, orderNo, isWorkingTime } from './util.j
 import { renderBriefPdf } from './pdf/brief.js';
 import { loadImage } from './pdf/images.js';
 import { catalog, findItem, refreshItem } from './catalog.js';
+import { queueEstimate } from './queue.js';
 import { SketchFlow } from './sketches.js';
 import { ReviewFlow, publishedReviews } from './reviews.js';
 import { PackFlow } from './stickers/pack.js';
@@ -504,7 +505,7 @@ export class BotHandlers {
     }
     if (chatId) this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
     if (chatId && voiceReply) this.tg.call('sendChatAction', { chat_id: chatId, action: 'record_voice' }).catch(() => {});
-    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId, image, earlier, voiceReply);
+    const r = await askAgent(from, text, [context, this.clientProfile(from.id), this.studioLive()].filter(Boolean).join('\n\n'), messageId, image, earlier, voiceReply);
     if (!r) return null;
     addAiHistory(from.id, 'client', image ? `📷 ${text}`.trim() : whole);
     if (r.reply) addAiHistory(from.id, 'ai', r.reply);
@@ -659,8 +660,8 @@ export class BotHandlers {
       const body = escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : '');
       const markup = this.aiMarkup(m.from.id, ai.actions || []);
       // На голосове — голосовим (текст підписом; довгий — окремим повідомленням з кнопками)
-      if (ai.voice && (await this.sendVoiceReply(m.chat.id, ai.voice, body, markup))) return true;
-      await asAuthor('agent', () => this.send(m.chat.id, body, markup));
+      if (!(ai.voice && (await this.sendVoiceReply(m.chat.id, ai.voice, body, markup)))) await asAuthor('agent', () => this.send(m.chat.id, body, markup));
+      if ((ai.actions || []).some((a) => a.type === 'show')) await this.showExamples(m.chat.id, m.from.id).catch((err) => log.warn(`Приклади робіт не надіслано: ${err.message}`));
       return true;
     }
     if (ai?.manager) {
@@ -2081,6 +2082,43 @@ export class BotHandlers {
     if (status === 'done' && clientNotified) await this.reviews.ask(order);
     log.info(`Заявка #${orderNo(order.id)}: статус «${T.STATUS_LABELS[status]}» (${who})`);
     return { clientNotified, released, lost };
+  }
+
+  /**
+   * Живі дані студії для помічника: черга (коли почнемо нове замовлення) і чи можна показати приклади робіт.
+   * Черга — лише коли власник увімкнув її на сторінці бота.
+   */
+  studioLive() {
+    const lines = [];
+    const q = queueEstimate();
+    if (q) {
+      lines.push(q.manual
+        ? `Черга студії зараз: нові замовлення беремо в роботу приблизно через ${q.days} дн.`
+        : q.days
+          ? `Черга студії зараз: ${q.open} замовлень у роботі, нове почнемо приблизно через ${q.days} дн.`
+          : 'Черга студії зараз: вільно — нове замовлення беремо в роботу одразу.');
+    }
+    lines.push('Приклади робіт: коли людина просить показати роботи чи вагається, додай у кінці відповіді рядок [[ACTION show: stickers]] — бот надішле кілька стікерів студії. Не частіше разу за розмову; не описуй стікери словами замість показу.');
+    return lines.join('\n');
+  }
+
+  /** Приклади робіт: 3 стікери з готового пака каталогу й кнопка на пак; каталог порожній — фірмові стікери-роботи. */
+  async showExamples(chatId, userId) {
+    const user = this.data.users[String(userId)];
+    if (user?.examplesShownAt && Date.now() - Date.parse(user.examplesShownAt) < 10 * 60 * 1000) return false;
+    if (user) user.examplesShownAt = new Date().toISOString();
+    const L = this.t(userId);
+    const pack = catalog().find((i) => (i.previewIds || []).length);
+    if (pack) {
+      for (const id of pack.previewIds.slice(0, 3)) await asAuthor('agent', () => this.tg.call('sendSticker', { chat_id: chatId, sticker: id }));
+      await asAuthor('agent', () => this.send(chatId, L.examplesPack(escapeHtml(pack.title)), { inline_keyboard: [[{ text: L.examplesOpen, url: `https://t.me/addstickers/${pack.name}` }]] }));
+      return true;
+    }
+    for (const n of ['wave', 'love', 'thumbsup']) {
+      const buf = fs.readFileSync(path.join(ASSETS_DIR, 'miniapp', `stk_${n}.webp`));
+      await asAuthor('agent', () => this.tg.sendFile('sendSticker', 'sticker', chatId, buf, `${n}.webp`, 'image/webp'));
+    }
+    return true;
   }
 
   /** Замовлення для агента GenAgent: номер, що замовили, статус і факти (строк, ціна). */

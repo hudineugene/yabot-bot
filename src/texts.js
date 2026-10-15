@@ -173,6 +173,9 @@ export const STATUS_LABELS = {
   cancelled: '🚫 Скасовано клієнтом',
 };
 
+export const examplesPack = (title) => `🎨 Це наш пак «${title}» — подивіться весь і додайте собі в Telegram:`;
+export const examplesOpen = '👀 Подивитись пак';
+
 export const CLIENT_STATUS_MESSAGES = {
   in_progress: (id) => `🎨 Беремося за ваше замовлення #${orderNo(id)}! Дизайнер напише вам найближчим часом.`,
   done: (id) => `🎉 Замовлення #${orderNo(id)} готове! Дякуємо, що обрали YABOT 💛`,
