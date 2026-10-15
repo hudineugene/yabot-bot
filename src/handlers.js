@@ -447,7 +447,7 @@ export class BotHandlers {
     if (!r) return null;
     addAiHistory(from.id, 'client', text);
     if (r.reply) addAiHistory(from.id, 'ai', r.reply);
-    if (r.handoff) await this.forwardQuestion(from.id, from, text, { summary: r.summary, quiet: Boolean(r.reply) });
+    if (r.handoff) await this.forwardQuestion(from.id, from, text, { summary: r.summary, quiet: Boolean(r.reply), upset: r.upset });
     store.save();
     return r;
   }
@@ -456,10 +456,31 @@ export class BotHandlers {
    * Кнопки під відповіддю помічника: бриф (якщо людина готова замовляти), розділи бота, які порадив помічник
    * ([[ACTION button: prices]]), підказки наступного питання ([[ACTION suggest: …]]) і оцінка 👍/👎.
    */
+  /**
+   * Розрахунок від помічника ([[ACTION quote: animated 10]]): тип і кількість стікерів → ціна з прайсу бота.
+   * { typeKey, qtyKey, label, price } або null (не зрозуміли тип/кількість чи ціни немає в прайсі).
+   */
+  aiQuote(userId, actions) {
+    const a = (actions || []).find((x) => x.type === 'quote' && x.value);
+    if (!a) return null;
+    const v = String(a.value).toLowerCase();
+    const typeKey = /anim|аним|анім/.test(v) ? 'animated' : /stat|стат/.test(v) ? 'static' : null;
+    const qtyKey = /15\s*[-–]\s*20|\b(15|20)\b/.test(v) ? '15-20' : /\b10\b/.test(v) ? '10' : /\b5\b/.test(v) ? '5' : null;
+    if (!typeKey || !qtyKey) return null;
+    const price = T.priceFor(this.data.config.prices, typeKey, qtyKey);
+    if (!price) return null;
+    const L = this.t(userId);
+    return { typeKey, qtyKey, price, label: `${L.OPTIONS.type[typeKey]}, ${L.OPTIONS.qty[qtyKey]}` };
+  }
+
   aiMarkup(userId, actions) {
     const L = this.t(userId);
     const rows = [];
-    if (actions.some((a) => a.type === 'brief')) rows.push([{ text: L.AI_BRIEF_BUTTON, callback_data: 'brief_start' }]);
+    const quote = this.aiQuote(userId, actions);
+    // Є розрахунок — кнопка оформлення одразу з цим типом і кількістю (решту брифу підставить помічник)
+    if (quote) rows.push([{ text: L.AI_QUOTE_BUTTON, callback_data: `bq:${quote.typeKey}:${quote.qtyKey}` }]);
+    // розрахунку немає (ціни нема в прайсі) — усе одно кнопка брифу
+    else if (actions.some((a) => a.type === 'brief' || a.type === 'quote')) rows.push([{ text: L.AI_BRIEF_BUTTON, callback_data: 'brief_start' }]);
     const sections = [...new Set(actions.filter((a) => a.type === 'button').map((a) => String(a.value).trim().toLowerCase()))]
       .filter((code) => Object.hasOwn(AI_SECTIONS, code) && !(code === 'brief' && rows.length)).slice(0, 2);
     if (sections.length) rows.push(sections.map((code) => ({ text: L[AI_SECTIONS[code]], callback_data: 'ab:' + code })));
@@ -510,7 +531,8 @@ export class BotHandlers {
     if (user) user.lastQuestion = m.text.slice(0, 1000);
     const ai = await this.consult(m.chat.id, m.from, m.text);
     if (ai?.reply) {
-      await this.send(m.chat.id, escapeHtml(ai.reply), this.aiMarkup(m.from.id, ai.actions || []));
+      const quote = this.aiQuote(m.from.id, ai.actions);
+      await this.send(m.chat.id, escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : ''), this.aiMarkup(m.from.id, ai.actions || []));
       return true;
     }
     if (ai?.handoff) return true; // помічник одразу передав питання студії
@@ -529,7 +551,7 @@ export class BotHandlers {
    * Передати питання людини без заявки студії (не більше 5 на день від людини).
    * summary — підсумок розмови від ІІ-помічника; quiet — людині вже відповів помічник, окремо не повідомляємо.
    */
-  async forwardQuestion(chatId, from, text, { summary = null, quiet = false } = {}) {
+  async forwardQuestion(chatId, from, text, { summary = null, quiet = false, upset = false } = {}) {
     const L = this.t(from.id);
     const studio = this.data.config.adminChatId;
     if (!studio || !text) return false;
@@ -541,7 +563,8 @@ export class BotHandlers {
     }
     try {
       const note = summary ? `\n\n🤖 <b>ИИ-помощник передал вопрос.</b>\n${escapeHtml(summary)}` : '';
-      const sent = await this.send(studio, `${T.studioQuestionHeader(from)}\n\n${escapeHtml(text)}${note}`);
+      const urgent = upset ? '🔴 <b>Клієнт незадоволений — відповісти першочергово</b>\n' : '';
+      const sent = await this.send(studio, `${urgent}${T.studioQuestionHeader(from)}\n\n${escapeHtml(text)}${note}`);
       const relay = (this.data.relay ||= {});
       relay[this.relayKey(sent.message_id, studio)] = { userId: from.id, question: true, epoch: this.data.orderEpoch };
     } catch (err) {
@@ -941,12 +964,17 @@ export class BotHandlers {
     if (!chatOn() || !talkedRecently(userId)) return;
     const L = this.t(userId);
     this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
-    const values = await extractFromAgent(userId, [
+    let values = await extractFromAgent(userId, [
       { key: 'type', description: 'Які стікери хоче людина: статичні чи анімовані', options: ['static', 'animated'] },
       { key: 'qty', description: 'Скільки стікерів у паку хоче людина', options: ['5', '10', '15-20'] },
       { key: 'hero', description: 'Головний герой стікерів: хто це (людина, тварина, персонаж бренду) і який він — коротко' },
       { key: 'emotions', description: 'Емоції та фрази для стікерів, які людина назвала' },
     ]);
+    // Людина натиснула «Оформити» під розрахунком помічника — тип і кількість беремо з нього
+    const user = this.data.users[String(userId)];
+    const quote = user?.aiQuote && Date.now() - user.aiQuote.at < 60 * 60 * 1000 ? user.aiQuote : null;
+    if (user) delete user.aiQuote;
+    if (quote) values = { ...(values || {}), type: quote.typeKey, qty: quote.qtyKey };
     if (!values) return;
     const d = draft.data;
     const filled = [];
@@ -1457,6 +1485,14 @@ export class BotHandlers {
 
     if (data === 'brief_start') {
       await this.answer(cb);
+      return this.startBrief(msg.chat.id, userId);
+    }
+    // «Оформити» під розрахунком помічника: тип і кількість — з розрахунку, решту бриф підставить з розмови
+    const bq = /^bq:(static|animated):(5|10|15-20)$/.exec(data);
+    if (bq) {
+      await this.answer(cb);
+      const user = this.data.users[String(userId)];
+      if (user) user.aiQuote = { typeKey: bq[1], qtyKey: bq[2], at: Date.now() };
       return this.startBrief(msg.chat.id, userId);
     }
 

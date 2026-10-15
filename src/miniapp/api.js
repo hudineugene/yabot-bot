@@ -673,7 +673,9 @@ export class MiniApi {
       return { forwarded: true, messages: aiHistory(from.id) };
     }
     const suggest = (r.actions || []).filter((a) => a.type === 'suggest').map((a) => String(a.value).trim()).filter((t) => t.length >= 3 && t.length <= 60).slice(0, 3);
-    return { messages: aiHistory(from.id), handoff: r.handoff, suggest };
+    // Розрахунок помічника — картка з ціною й кнопкою оформлення
+    const quote = this.h.aiQuote(from.id, r.actions);
+    return { messages: aiHistory(from.id), handoff: r.handoff, suggest, quote };
   }
 
   async question(from, body) {

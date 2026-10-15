@@ -923,5 +923,8 @@ export function studioQuestionHeader(from) {
 
 // --- Бриф із розмови з ІІ-помічником ---
 export const AI_BRIEF_BUTTON = '🚀 Розпочати бриф';
+export const AI_QUOTE_BUTTON = '🚀 Оформити замовлення';
+export const aiQuoteLine = (label, price) =>
+  `\n\n💰 <b>${label}</b> — ${price}\n<i>Точну ціну підтвердить дизайнер після брифу.</i>`;
 export const aiPrefilled = (lines) =>
   `📝 Дещо з брифу я вже заповнив за нашою розмовою:\n${lines}\n\nРешту спитаю зараз, а в кінці все можна змінити.`;

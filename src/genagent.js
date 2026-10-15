@@ -176,8 +176,10 @@ export async function askAgent(from, text, context) {
     const data = await res.json();
     if (s.chatError) { s.chatError = ''; store.save(); }
     const actions = Array.isArray(data.actions) ? data.actions.filter((a) => a && typeof a.type === 'string') : [];
-    if (!data.reply) return data.handoff ? { reply: null, handoff: true, summary: data.summary || null, actions } : null;
-    return { reply: String(data.reply), handoff: Boolean(data.handoff), summary: data.summary || null, actions };
+    // upset — помічник передав незадоволену людину: студія бачить позначку «першочергово»
+    const upset = Boolean(data.upset);
+    if (!data.reply) return data.handoff ? { reply: null, handoff: true, summary: data.summary || null, upset, actions } : null;
+    return { reply: String(data.reply), handoff: Boolean(data.handoff), summary: data.summary || null, upset, actions };
   } catch (err) {
     const message = err.name === 'TimeoutError' ? 'агент не ответил за минуту' : err.message === 'fetch failed' ? 'нет связи с агентом' : err.message;
     if (s.chatError !== message) log.warn(`GenAgent (помощник): ${message}`);

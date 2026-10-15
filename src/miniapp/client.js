@@ -522,6 +522,7 @@ select.sel { appearance: none; -webkit-appearance: none; background-image: linea
 .bfile span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .bfile small { color: var(--ink-2); }
 .ai-suggest { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px 46px; }
+.ai-quote { margin: 0 0 8px 46px; display: grid; gap: 6px; justify-items: start; }
 .ai-suggest button { font-size: 13.5px; padding: 6px 12px; }
 .ai-rate { display: flex; gap: 6px; margin: -2px 0 6px 46px; }
 .ai-rate button { padding: 4px 10px; font-size: 15px; }
@@ -668,7 +669,7 @@ export const CLIENT_JS = String.raw`
       history: 'Історія замовлень', help: 'Часті питання', askQ: 'Поставити питання', pricesT: 'Ціни', contactEdit: 'Контакт для зв’язку', save: 'Зберегти', saved: 'Збережено',
       askPh: 'Ваше питання дизайнеру', askSend: 'Надіслати', askSent: 'Надіслано — відповідь прийде в чат бота.',
       aiTitle: 'Помічник YABOT', aiWho: 'ІІ-помічник', aiPh: 'Напишіть питання…', aiHello: 'Привіт! Я ІІ-помічник студії YABOT. Розкажу про стікерпаки, персонажів і ботів, ціни й етапи роботи. Якщо потрібно — передам питання дизайнеру.',
-      aiThinking: 'Друкує…', aiThanks: 'Дякуємо за оцінку!', aiForwarded: 'Передали ваше питання студії — відповідь прийде сюди й у чат бота.', pricesNone: 'Точну ціну назве дизайнер після брифу.',
+      aiThinking: 'Друкує…', aiQuoteBtn: 'Оформити замовлення', aiQuoteNote: 'Точну ціну підтвердить дизайнер після брифу', aiThanks: 'Дякуємо за оцінку!', aiForwarded: 'Передали ваше питання студії — відповідь прийде сюди й у чат бота.', pricesNone: 'Точну ціну назве дизайнер після брифу.',
       openFromTg: 'Відкрийте застосунок із чату бота в Telegram.', err: 'Щось пішло не так. Спробуйте ще раз.', retry: 'Спробувати ще раз',
       uploadErr: 'Не вдалося завантажити фото', waitUpload: 'Зачекайте, фото ще завантажуються…', required: 'Заповніть обов’язкові поля', uah: 'грн', studioBtn: 'Студія'
     },
@@ -721,7 +722,7 @@ export const CLIENT_JS = String.raw`
       history: 'Order history', help: 'FAQ', askQ: 'Ask a question', pricesT: 'Prices', contactEdit: 'Contact', save: 'Save', saved: 'Saved',
       askPh: 'Your question to the designer', askSend: 'Send', askSent: 'Sent — the reply will come to the bot chat.',
       aiTitle: 'YABOT assistant', aiWho: 'AI assistant', aiPh: 'Type your question…', aiHello: 'Hi! I am the AI assistant of YABOT studio. Ask me about sticker packs, characters and bots, prices and the process. If needed, I will pass your question to a designer.',
-      aiThinking: 'Typing…', aiThanks: 'Thanks for the feedback!', aiForwarded: 'Your question was passed to the studio — the reply will come here and to the bot chat.', pricesNone: 'The designer will quote the exact price after the brief.',
+      aiThinking: 'Typing…', aiQuoteBtn: 'Place the order', aiQuoteNote: 'The designer will confirm the exact price after the brief', aiThanks: 'Thanks for the feedback!', aiForwarded: 'Your question was passed to the studio — the reply will come here and to the bot chat.', pricesNone: 'The designer will quote the exact price after the brief.',
       openFromTg: 'Open the app from the bot chat in Telegram.', err: 'Something went wrong. Please try again.', retry: 'Try again',
       uploadErr: 'Could not upload the photo', waitUpload: 'Please wait, photos are still uploading…', required: 'Fill in the required fields', uah: 'UAH', studioBtn: 'Studio'
     }
@@ -2117,6 +2118,7 @@ export const CLIENT_JS = String.raw`
   var aiWaiting = null; // текст, що зараз відправляється помічнику
   var aiRated = {};     // відповіді, які людина вже оцінила (за часом відповіді)
   var aiSuggest = [];   // підказки наступного питання від помічника
+  var aiQuote = null;   // розрахунок помічника: { typeKey, qtyKey, label, price } — картка з кнопкою оформлення
   function aiPage() {
     var input = el('input', { class: 'chat-input', placeholder: t('aiPh'), maxlength: '1000', onkeydown: function (e) { if (e.key === 'Enter') send(); } });
     function send() {
@@ -2128,6 +2130,7 @@ export const CLIENT_JS = String.raw`
           aiWaiting = null;
           S.aiChat = j.messages || S.aiChat;
           aiSuggest = j.suggest || [];
+          aiQuote = j.quote || null;
           if (j.forwarded || j.relayed) toast(t('aiForwarded'));
           haptic('ok'); render(); window.scrollTo(0, document.body.scrollHeight);
         })
@@ -2159,6 +2162,15 @@ export const CLIENT_JS = String.raw`
           var chips = aiSuggest.length ? el('div', { class: 'ai-suggest' }, aiSuggest.map(function (q) {
             return el('button', { class: 'btn small ghost', onclick: function () { input.value = q; aiSuggest = []; send(); } }, q);
           })) : null;
+          // Розрахунок від помічника: ціна з прайсу й кнопка — майстер замовлення з цим типом і кількістю
+          var quote = aiQuote ? el('div', { class: 'card ai-quote' },
+            el('div', null, '💰 ', el('b', null, aiQuote.label), ' — ' + aiQuote.price),
+            el('small', { class: 'muted' }, t('aiQuoteNote')),
+            el('button', { class: 'btn primary small', onclick: function () {
+              form.service = 'stickers'; form.typeKey = aiQuote.typeKey; form.qtyKey = aiQuote.qtyKey; form.packageId = ''; form.qtyCustom = '';
+              aiQuote = null; startWizard('stickers');
+            } }, t('aiQuoteBtn'), icon('arrow-right'))) : null;
+          chips = [quote, chips];
           if (aiRated[m.at]) return [b, chips];
           return [b, el('div', { class: 'ai-rate' },
             el('button', { class: 'btn small ghost', onclick: function () { rate(true); } }, '👍'),
