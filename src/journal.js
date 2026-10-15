@@ -52,6 +52,14 @@ function push(userId, item, from) {
   if (q.length > MAX_PENDING) q.splice(0, q.length - MAX_PENDING);
 }
 
+// Превью для «Діалогів»: невеликий розмір фото (~320 px) чи мініатюра стікера/відео — завантажуємо при відправці
+function thumbOf(m) {
+  if (!m) return null;
+  if (m.photo?.length) return (m.photo.find((p) => p.width >= 320) || m.photo.at(-1)).file_id;
+  const t = m.sticker?.thumbnail || m.video?.thumbnail || m.animation?.thumbnail || m.video_note?.thumbnail || m.document?.thumbnail;
+  return t?.file_id || null;
+}
+
 const plain = (html) => String(html || '')
   .replace(/<[^>]+>/g, '')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
@@ -82,7 +90,8 @@ export function describe(m) {
 export function recordIncoming(m) {
   if (!m || m.chat?.type !== 'private' || !m.from || m.from.is_bot || !isClientChat(m.chat.id)) return;
   const { kind, text } = describe(m);
-  push(m.chat.id, { id: incomingId(m), dir: 'in', kind, text, at: (m.date || Date.now() / 1000) * 1000 }, m.from);
+  const thumbFile = thumbOf(m);
+  push(m.chat.id, { id: incomingId(m), dir: 'in', kind, text, at: (m.date || Date.now() / 1000) * 1000, ...(thumbFile ? { thumbFile } : {}) }, m.from);
 }
 
 export const incomingId = (m) => `in:${m.message_id}`;
@@ -146,7 +155,8 @@ Telegram.onSent = (method, params, result) => {
   if (method === 'sendMediaGroup') {
     const media = (() => { try { const v = field(params, 'media'); return typeof v === 'string' ? JSON.parse(v) : v || []; } catch { return []; } })();
     (Array.isArray(result) ? result : []).forEach((r, i) => {
-      push(chatId, { ...base, id: `out:${r.message_id}`, kind: media[i]?.type || 'photo', text: plain(media[i]?.caption || '') });
+      const thumbFile = thumbOf(r);
+      push(chatId, { ...base, id: `out:${r.message_id}`, kind: media[i]?.type || 'photo', text: plain(media[i]?.caption || ''), ...(thumbFile ? { thumbFile } : {}) });
     });
     return;
   }
@@ -160,12 +170,45 @@ Telegram.onSent = (method, params, result) => {
   }
   if (method === 'sendContact') text = [field(params, 'first_name'), field(params, 'phone_number')].filter(Boolean).join(' ');
   if (method === 'sendLocation') text = `${field(params, 'latitude')}, ${field(params, 'longitude')}`;
-  push(chatId, { ...base, id: `out:${id}`, kind, text: (text + buttonsOf(params)).trim() });
+  const thumbFile = thumbOf(result);
+  push(chatId, { ...base, id: `out:${id}`, kind, text: (text + buttonsOf(params)).trim(), ...(thumbFile ? { thumbFile } : {}) });
 };
 
 // --- Надсилання в GenAgent ---
 
 let busy = false;
+
+const MAX_THUMB = 300 * 1024;
+const MAX_THUMBS_PER_BATCH = 3 * 1024 * 1024;
+
+function imageType(buf) {
+  if (buf[0] === 0x89 && buf[1] === 0x50) return 'image/png';
+  if (buf.slice(8, 12).toString() === 'WEBP') return 'image/webp';
+  if (buf[0] === 0xff && buf[1] === 0xd8) return 'image/jpeg';
+  return null;
+}
+
+/** Завантажити превью (thumbFile → thumb у base64). Не вийшло — повідомлення піде без превью. */
+async function withThumbs(items) {
+  const token = store.data.config.botToken;
+  let total = 0;
+  const out = [];
+  for (const { thumbFile, ...item } of items) {
+    if (thumbFile && token && total < MAX_THUMBS_PER_BATCH) {
+      try {
+        const buf = await new Telegram(token).download(thumbFile);
+        const type = buf && buf.length <= MAX_THUMB ? imageType(buf) : null;
+        if (type) {
+          item.thumb = buf.toString('base64');
+          item.thumbType = type;
+          total += item.thumb.length;
+        }
+      } catch { /* без превью */ }
+    }
+    out.push(item);
+  }
+  return out;
+}
 let backoffUntil = 0;
 let failures = 0;
 
@@ -191,10 +234,11 @@ async function flushOne() {
       if (batch.length >= BATCH) break;
     }
     const user = batch[batch.length - 1].user;
+    const items = await withThumbs(batch.map((e) => e.item));
     const res = await fetch(`${s.url}/sync`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${s.key}` },
-      body: JSON.stringify({ user, items: batch.map((e) => e.item) }),
+      body: JSON.stringify({ user, items }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (res.status === 400) {

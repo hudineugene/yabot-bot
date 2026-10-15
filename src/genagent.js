@@ -161,7 +161,7 @@ export function addAiHistory(userId, from, text) {
  * Запитати агента. Повертає { reply, handoff, summary } або null (вимкнено, агент недоступний чи не відповів) —
  * тоді бот поводиться як раніше: частi питання й передача питання студії.
  */
-export async function askAgent(from, text, context, messageId) {
+export async function askAgent(from, text, context, messageId, image) {
   const s = chatOn();
   if (!s) return null;
   try {
@@ -174,6 +174,8 @@ export async function askAgent(from, text, context, messageId) {
         ...(context ? { context: String(context).slice(0, 2000) } : {}),
         // номер у журналі переписки (journal.js) — щоб GenAgent не записав це повідомлення двічі
         ...(messageId ? { messageId } : {}),
+        // фото людини: GenAgent опише його, і помічник відповість з урахуванням
+        ...(image ? { image } : {}),
       }),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });

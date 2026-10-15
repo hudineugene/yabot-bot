@@ -414,6 +414,8 @@ export class BotHandlers {
     if (!isStudioChat && !cmd && text && text.length >= 3 && (await this.answerQuestion(m))) return;
     // Голосове людини без заявки — розшифровуємо й відповідаємо, як на текст
     if (!isStudioChat && !text && m.voice && chatOn() && (await this.answerVoice(m))) return;
+    // Фото людини без заявки — помічник дивиться на нього й відповідає (і запам'ятовує як референс для брифу)
+    if (!isStudioChat && !text && m.photo?.length && chatOn() && !managerTalking(m.from.id) && (await this.answerPhoto(m))) return;
     // Стікер, фото тощо від людини без заявки — у «Діалоги» GenAgent позначкою (помічник на це не відповідає)
     if (!isStudioChat && !text && chatOn()) {
       void logToAgent(m.from, 'media', mediaLabel(m), incomingId(m));
@@ -423,6 +425,29 @@ export class BotHandlers {
       }
     }
     await this.send(chatId, L.MSG.notUnderstood, L.mainMenu());
+  }
+
+  /**
+   * Фото → помічник (GenAgent описує, що на ньому) → відповідь по суті: стиль, ціна, що вийде. Фото запам'ятовуємо
+   * як референс — коли людина почне бриф, воно вже буде в ньому. false — помічник не відповів (як раніше).
+   */
+  async answerPhoto(m) {
+    const L = this.t(m.from.id);
+    const size = [...m.photo].reverse().find((p) => (p.width || 0) <= 1280 && (p.file_size || 0) <= 4 * 1024 * 1024) || m.photo[0];
+    const buf = await this.tg.download(size.file_id).catch((err) => log.warn(`Фото не завантажилось: ${err.message}`));
+    if (!buf) return false;
+    const user = this.data.users[String(m.from.id)];
+    if (user) {
+      const ref = extractRef(m);
+      user.aiRefs = [...(user.aiRefs || []).filter((r) => Date.now() - Date.parse(r.at) < 24 * 60 * 60 * 1000), { ...ref, at: new Date().toISOString() }].slice(-MAX_REFS);
+    }
+    const caption = (m.caption || '').trim();
+    const ai = await this.consult(m.chat.id, m.from, caption, 'Людина надіслала фото (можливо, героя для стікерів чи приклад стилю).', incomingId(m), { data: buf.toString('base64'), mediaType: 'image/jpeg' });
+    if (!ai?.reply) return Boolean(ai?.handoff);
+    const quote = this.aiQuote(m.from.id, ai.actions);
+    await asAuthor('agent', () => this.send(m.chat.id, escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : ''), this.aiMarkup(m.from.id, ai.actions || [])));
+    store.save();
+    return true;
   }
 
   /** Голосове → текст (GenAgent) → звичайна відповідь помічника. Людина бачить, що бот почув. */
@@ -462,7 +487,7 @@ export class BotHandlers {
    * Питання людини без замовлення до ІІ-помічника (агент GenAgent). Повертає { reply, handoff } або null,
    * якщо помічник вимкнений чи не відповів. Потрібен менеджер — питання йде студії разом із підсумком розмови.
    */
-  async consult(chatId, from, text, context, messageId) {
+  async consult(chatId, from, text, context, messageId, image) {
     if (!chatOn()) return null;
     // Розмову веде менеджер з GenAgent — помічник мовчить, повідомлення йде менеджеру в «Діалоги»
     if (managerTalking(from.id)) {
@@ -472,7 +497,7 @@ export class BotHandlers {
       return { reply: null, handoff: true, manager: true, actions: [] };
     }
     if (chatId) this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
-    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId);
+    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId, image);
     if (!r) return null;
     addAiHistory(from.id, 'client', text);
     if (r.reply) addAiHistory(from.id, 'ai', r.reply);
@@ -1033,6 +1058,12 @@ export class BotHandlers {
     const style = values.style && styleList.find((s) => s.id === values.style);
     if (style) { d.style = { id: style.id, name: style.name, nameEn: style.nameEn || '' }; filled.push('style'); }
     if (values.refs === 'none') { d.refs = []; filled.push('refs'); }
+    // Фото, які людина надсилала помічнику за останню добу, — референси брифу
+    const aiRefs = (user?.aiRefs || []).filter((r) => Date.now() - Date.parse(r.at) < 24 * 60 * 60 * 1000);
+    if (!filled.includes('refs') && aiRefs.length && !d.refs?.length) {
+      d.refs = aiRefs.map(({ at, ...ref }) => ref);
+      filled.push('refs');
+    }
     // Контакт: названий у розмові, інакше — Telegram-нік (бот і так на звʼязку з людиною)
     const nick = this.data.users[String(userId)]?.username;
     const contact = values.contact ? String(values.contact).slice(0, MAX_SHORT) : nick ? '@' + nick : '';
@@ -1040,7 +1071,7 @@ export class BotHandlers {
     if (!filled.length) return;
     draft.prefilled = filled;
     sendAgentEvent(userId, 'brief_prefilled', 'Бриф заповнено з розмови');
-    const shown = (f) => (f === 'style' ? d.style.name : f === 'refs' ? L.REFS_NONE : d[{ type: 'stickerType', qty: 'quantity' }[f] || f]);
+    const shown = (f) => (f === 'style' ? d.style.name : f === 'refs' ? (d.refs?.length ? `📷 ${d.refs.length}` : L.REFS_NONE) : d[{ type: 'stickerType', qty: 'quantity' }[f] || f]);
     const lines = filled.map((f) => `• ${L.EDIT_LABELS[f] || f}: <b>${escapeHtml(shown(f))}</b>`);
     const complete = ['type', 'qty', 'hero', 'emotions', 'refs', 'contact'].every((f) => filled.includes(f)) && (filled.includes('style') || !styleList.length);
     await this.send(chatId, L.aiPrefilled(lines.join('\n'), complete));
