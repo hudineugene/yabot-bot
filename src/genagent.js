@@ -10,7 +10,10 @@ import { activeServices } from './services.js';
 import { faqList } from './faq.js';
 import { PRICE_TYPE_KEYS, PRICE_QTY_KEYS, priceFor } from './texts.js';
 import { textsFor } from './lang.js';
-import { escapeHtml } from './util.js';
+import { escapeHtml, isWorkingTime, todayKey } from './util.js';
+import { TIME_ZONE } from './config.js';
+import { clientReplyTime } from './sla.js';
+import { langOf } from './lang.js';
 import { asAuthor } from './journal.js';
 
 const SYNC_EVERY_MS = 5 * 60 * 1000;
@@ -157,6 +160,49 @@ export function addAiHistory(userId, from, text) {
   user.ai = [...(user.ai || []), { from, text: String(text).slice(0, 4000), at: new Date().toISOString() }].slice(-HISTORY_MAX);
 }
 
+const DAY_WORDS = {
+  uk: { today: 'сьогодні', tomorrow: 'завтра', from: 'з', days: ['', 'у понеділок', 'у вівторок', 'у середу', 'у четвер', 'у пʼятницю', 'у суботу', 'у неділю'], after: 'після відпустки' },
+  en: { today: 'today', tomorrow: 'tomorrow', from: 'from', days: ['', 'on Monday', 'on Tuesday', 'on Wednesday', 'on Thursday', 'on Friday', 'on Saturday', 'on Sunday'], after: 'after the vacation' },
+};
+
+/** Коли студія відкриється, словами: «завтра з 10:00», «у понеділок з 10:00». */
+export function nextOpening(hours, lang = 'uk', now = new Date()) {
+  const w = DAY_WORDS[lang] || DAY_WORDS.uk;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(now).map((p) => [p.type, p.value]));
+  const today = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[parts.weekday];
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  const [fh, fm] = String(hours.from).split(':').map(Number);
+  for (let offset = 0; offset <= 7; offset++) {
+    const day = ((today - 1 + offset) % 7) + 1;
+    if (!hours.days?.includes(day)) continue;
+    if (offset === 0 && minutes >= fh * 60 + (fm || 0)) continue;
+    const when = offset === 0 ? w.today : offset === 1 ? w.tomorrow : w.days[day];
+    return `${when} ${w.from} ${hours.from}`;
+  }
+  return '';
+}
+
+/**
+ * Чи працює студія зараз — для чесного строку відповіді, коли помічник передає людину студії:
+ * відпустка, неробочий час (і коли відкриємося) або звичайний час відповіді (медіана, якщо власник дозволив показувати).
+ */
+export function teamNow(userId, now = new Date()) {
+  const cfg = store.data.config;
+  const lang = langOf(userId) === 'en' ? 'en' : 'uk';
+  const v = cfg.vacation || {};
+  if (v.enabled && (!v.until || v.until >= todayKey())) {
+    return { open: false, next: v.until ? `${DAY_WORDS[lang].after} (${v.until.split('-').reverse().join('.')})` : DAY_WORDS[lang].after };
+  }
+  const hours = cfg.workHours;
+  if (hours?.enabled && !isWorkingTime(hours, now)) {
+    const next = nextOpening(hours, lang, now);
+    return { open: false, ...(next ? { next } : {}) };
+  }
+  const minutes = clientReplyTime();
+  return { open: true, ...(minutes ? { minutes: Math.round(minutes) } : {}) };
+}
+
 /**
  * Запитати агента. Повертає { reply, handoff, summary } або null (вимкнено, агент недоступний чи не відповів) —
  * тоді бот поводиться як раніше: частi питання й передача питання студії.
@@ -176,6 +222,8 @@ export async function askAgent(from, text, context, messageId, image) {
         ...(messageId ? { messageId } : {}),
         // фото людини: GenAgent опише його, і помічник відповість з урахуванням
         ...(image ? { image } : {}),
+        // чи працює студія зараз — помічник назве чесний строк, коли передає людину студії
+        team: teamNow(from.id),
       }),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
