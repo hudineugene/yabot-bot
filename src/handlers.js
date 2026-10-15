@@ -35,7 +35,7 @@ import { findPromo, usePromo, promoList } from './promos.js';
 import { CLOSED, releaseBenefits, reclaimBenefits, describeReleased } from './benefits.js';
 import { isOpen, remaining, memberByChat, memberById, assigneeOf, dateText } from './orders.js';
 import * as T from './texts.js';
-import { forwardComment, askAgent, chatOn, addAiHistory, sendAgentEvent, ratingKeyboard, extractFromAgent, talkedRecently, transcribeVoice, VOICE_MAX_SEC, linkFromSite } from './genagent.js';
+import { forwardComment, askAgent, chatOn, addAiHistory, sendAgentEvent, ratingKeyboard, extractFromAgent, talkedRecently, transcribeVoice, VOICE_MAX_SEC, linkFromSite, managerTalking, logToAgent, mediaLabel } from './genagent.js';
 
 const FLOW = ['type', 'qty', 'hero', 'style', 'emotions', 'refs', 'contact', 'confirm'];
 // Розділи бота, які ІІ-помічник може показати кнопкою під відповіддю: код → назва кнопки в текстах
@@ -407,6 +407,14 @@ export class BotHandlers {
     if (!isStudioChat && !cmd && text && text.length >= 3 && (await this.answerQuestion(m))) return;
     // Голосове людини без заявки — розшифровуємо й відповідаємо, як на текст
     if (!isStudioChat && !text && m.voice && chatOn() && (await this.answerVoice(m))) return;
+    // Стікер, фото тощо від людини без заявки — у «Діалоги» GenAgent позначкою (помічник на це не відповідає)
+    if (!isStudioChat && !text && chatOn()) {
+      void logToAgent(m.from, 'media', mediaLabel(m));
+      if (managerTalking(m.from.id)) {
+        await this.tg.call('setMessageReaction', { chat_id: chatId, message_id: m.message_id, reaction: [{ type: 'emoji', emoji: '👀' }] }).catch(() => {});
+        return;
+      }
+    }
     await this.send(chatId, L.MSG.notUnderstood, L.mainMenu());
   }
 
@@ -421,6 +429,7 @@ export class BotHandlers {
     const audio = await this.tg.download(m.voice.file_id).catch((err) => log.warn(`Голосове не завантажилось: ${err.message}`));
     const r = audio ? await transcribeVoice(audio, m.from.id) : null;
     if (!r?.text) {
+      void logToAgent(m.from, 'media', mediaLabel(m)); // у «Діалогах» видно, що людина щось надіслала
       await this.send(m.chat.id, r?.reason === 'too_long' ? L.MSG.voiceTooLong : r?.reason === 'no_speech' ? L.MSG.voiceUnclear : L.MSG.voiceFailed);
       return true;
     }
@@ -448,6 +457,13 @@ export class BotHandlers {
    */
   async consult(chatId, from, text, context) {
     if (!chatOn()) return null;
+    // Розмову веде менеджер з GenAgent — помічник мовчить, повідомлення йде менеджеру в «Діалоги»
+    if (managerTalking(from.id)) {
+      addAiHistory(from.id, 'client', text);
+      store.save();
+      void logToAgent(from, 'user', text);
+      return { reply: null, handoff: true, manager: true, actions: [] };
+    }
     if (chatId) this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
     const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'));
     if (!r) return null;
@@ -539,6 +555,11 @@ export class BotHandlers {
     if (ai?.reply) {
       const quote = this.aiQuote(m.from.id, ai.actions);
       await this.send(m.chat.id, escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : ''), this.aiMarkup(m.from.id, ai.actions || []));
+      return true;
+    }
+    if (ai?.manager) {
+      // Людина пише менеджеру: 👀 — повідомлення отримано, відповідь буде від студії
+      if (m.message_id) await this.tg.call('setMessageReaction', { chat_id: m.chat.id, message_id: m.message_id, reaction: [{ type: 'emoji', emoji: '👀' }] }).catch(() => {});
       return true;
     }
     if (ai?.handoff) return true; // помічник одразу передав питання студії

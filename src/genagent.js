@@ -9,6 +9,8 @@ import { log } from './log.js';
 import { activeServices } from './services.js';
 import { faqList } from './faq.js';
 import { PRICE_TYPE_KEYS, PRICE_QTY_KEYS, priceFor } from './texts.js';
+import { textsFor } from './lang.js';
+import { escapeHtml } from './util.js';
 
 const SYNC_EVERY_MS = 5 * 60 * 1000;
 const RESEND_MS = 6 * 60 * 60 * 1000; // навіть без змін — раз на 6 год (якщо базу в агенті почистили)
@@ -189,6 +191,67 @@ export async function askAgent(from, text, context) {
   }
 }
 
+// --- Відповідь менеджера з GenAgent («Діалоги» чи кнопка «Відповісти» в Telegram) ---
+
+// Менеджер написав людині з GenAgent — розмову веде він: помічник мовчить, повідомлення людини йдуть
+// менеджеру в «Діалоги». Поки менеджер не поверне людину помічнику або не мовчить довше MANAGER_HOLD_MS.
+const MANAGER_HOLD_MS = 12 * 60 * 60 * 1000;
+
+export function managerTalking(userId, now = Date.now()) {
+  const user = store.data.users[String(userId)];
+  const at = user?.managerAt ? Date.parse(user.managerAt) : 0;
+  if (!at || now - at > MANAGER_HOLD_MS) return false;
+  return !(user.aiResumedAt && Date.parse(user.aiResumedAt) >= at);
+}
+
+/**
+ * Записати в «Діалоги» GenAgent те, що агенту не надсилалось: user — людина пише, поки розмову веде менеджер;
+ * media — людина надіслала не текст (стікер, фото…), text — підпис на кшталт «Стикер». Агент на це не відповідає.
+ */
+export async function logToAgent(from, role, text) {
+  const s = chatOn();
+  if (!s || !from?.id) return false;
+  try {
+    const res = await fetch(`${s.url}/log`, {
+      method: 'POST',
+      headers: authHeaders(s),
+      body: JSON.stringify({
+        user: { id: from.id, name: [from.first_name, from.last_name].filter(Boolean).join(' ').slice(0, 200) || undefined, username: from.username },
+        role,
+        text: String(text || '').slice(0, 4000),
+      }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Що надіслала людина, якщо не текст — для «Діалогів» (мова адмінки GenAgent — російська). */
+export function mediaLabel(m) {
+  const kind = m.sticker ? `Стикер${m.sticker.emoji ? ' ' + m.sticker.emoji : ''}` : m.photo ? 'Фотография' : m.video ? 'Видео'
+    : m.animation ? 'GIF' : m.voice ? 'Голосовое сообщение' : m.video_note ? 'Видеосообщение' : m.audio ? 'Аудиофайл'
+    : m.document ? `Документ${m.document.file_name ? ': ' + m.document.file_name : ''}` : m.location ? 'Геолокация' : m.contact ? 'Контакт' : 'Нетекстовое сообщение';
+  return m.caption ? `${kind}: ${m.caption}` : kind;
+}
+
+/** Відповідь менеджера з GenAgent — людині від імені студії, як відповідь студії на питання. */
+async function sendManagerReply(tg, item) {
+  const user = store.data.users[String(item.userId)];
+  if (!user) return { error: 'людини немає в боті' };
+  try {
+    const sent = await tg.call('sendMessage', { chat_id: item.userId, text: `${textsFor(item.userId).STUDIO_ANSWER}\n\n${escapeHtml(item.text)}`, parse_mode: 'HTML' });
+    user.managerAt = new Date().toISOString();
+    addAiHistory(item.userId, 'studio', item.text);
+    store.save();
+    return { messageId: sent.message_id };
+  } catch (err) {
+    if (err?.status === 403) { user.blocked = true; store.save(); }
+    return { error: (err.description || err.message || 'не надіслано').slice(0, 300) };
+  }
+}
+
 /**
  * Розшифрувати голосове людини (OGG/Opus з Telegram) — GenAgent робить це на нашому сервері, без оплати за хвилини.
  * Повертає { text } (text: null — слів не розібрати) з reason, або null, якщо помічник вимкнений чи GenAgent недоступний.
@@ -366,7 +429,7 @@ export async function publishOutbox(tg) {
   // Коментарі каналу (якщо ввімкнено) і нагадування людям, які поговорили з помічником і пішли (якщо ввімкнено помічника)
   const s = commentsOn() || chatOn();
   if (!s || !tg || outboxBusy) return;
-  const kinds = [s.comments ? 'comment' : '', s.chat ? 'followup' : ''].filter(Boolean).join(',');
+  const kinds = [s.comments ? 'comment' : '', s.chat ? 'followup,dm,resume' : ''].filter(Boolean).join(',');
   outboxBusy = true;
   try {
     const res = await fetch(`${s.url}/outbox?kinds=${kinds}`, { headers: authHeaders(s), signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -374,6 +437,17 @@ export async function publishOutbox(tg) {
     const { items = [] } = await res.json();
     for (const item of items) {
       const ack = { id: item.id };
+      if (item.kind === 'dm' || item.kind === 'resume') {
+        if (item.kind === 'dm') Object.assign(ack, item.text ? await sendManagerReply(tg, item) : { done: true });
+        else {
+          // Менеджер повернув людину помічнику («Вернуть агенту» в GenAgent)
+          const user = store.data.users[String(item.userId)];
+          if (user) { user.aiResumedAt = new Date().toISOString(); store.save(); }
+          ack.done = true;
+        }
+        await fetch(`${s.url}/outbox`, { method: 'POST', headers: authHeaders(s), body: JSON.stringify(ack), signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => {});
+        continue;
+      }
       if (item.kind === 'followup') {
         Object.assign(ack, await sendFollowUp(tg, item));
         await fetch(`${s.url}/outbox`, { method: 'POST', headers: authHeaders(s), body: JSON.stringify(ack), signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => {});
