@@ -349,6 +349,30 @@ export function sendAgentEvent(userId, type, label = '', value = undefined) {
     .catch(() => {});
 }
 
+/**
+ * Агент супроводжує замовлення: новий статус → GenAgent (стрічка замовлення в контексті агента).
+ * write — попросити в агента живе повідомлення замість шаблону (fallback): повертає текст або null —
+ * тоді шлемо свій шаблон. Живий текст чекаємо не довше 9 с; без мережі чи ключа — просто null.
+ */
+export async function orderUpdate(userId, order, fallback = '', write = false) {
+  const s = genagentSettings();
+  if (!s.enabled || !s.url || !s.key || !userId) return null;
+  const ask = Boolean(write && fallback);
+  try {
+    const res = await fetch(`${s.url}/order`, {
+      method: 'POST',
+      headers: authHeaders(s),
+      body: JSON.stringify({ user: { id: String(userId) }, order, ...(ask ? { fallback: fallback.slice(0, 2000), write: true } : {}) }),
+      signal: AbortSignal.timeout(ask ? 9000 : TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return typeof j.text === 'string' && j.text.trim() ? j.text.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Кнопки оцінки під відповіддю помічника в чаті бота. */
 export const ratingKeyboard = () => ({ inline_keyboard: [[{ text: '👍', callback_data: 'air:up' }, { text: '👎', callback_data: 'air:down' }]] });
 

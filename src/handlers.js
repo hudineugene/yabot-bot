@@ -36,7 +36,7 @@ import { CLOSED, releaseBenefits, reclaimBenefits, describeReleased } from './be
 import { isOpen, remaining, memberByChat, memberById, assigneeOf, dateText } from './orders.js';
 import * as T from './texts.js';
 import { recordIncoming, recordCallback, incomingId, asAuthor, recordReaction, recordEdit } from './journal.js';
-import { forwardComment, askAgent, chatOn, addAiHistory, sendAgentEvent, ratingKeyboard, extractFromAgent, talkedRecently, transcribeVoice, VOICE_MAX_SEC, linkFromSite, managerTalking, logToAgent, mediaLabel } from './genagent.js';
+import { forwardComment, askAgent, chatOn, addAiHistory, sendAgentEvent, ratingKeyboard, extractFromAgent, talkedRecently, transcribeVoice, VOICE_MAX_SEC, linkFromSite, managerTalking, logToAgent, mediaLabel, orderUpdate } from './genagent.js';
 
 const FLOW = ['type', 'qty', 'hero', 'style', 'emotions', 'refs', 'contact', 'confirm'];
 // Розділи бота, які ІІ-помічник може показати кнопкою під відповіддю: код → назва кнопки в текстах
@@ -1646,6 +1646,7 @@ export class BotHandlers {
       messages: [],
     };
     this.data.inquiries.push(order);
+    orderUpdate(from.id, this.agentOrder(order)).catch(() => {});
     sendAgentEvent(from.id, 'brief_sent', order.service && order.service !== 'stickers' ? 'Заявка на проєкт' : 'Бриф відправлено');
     if (order.promo) {
       usePromo(order.promo.code);
@@ -1987,9 +1988,13 @@ export class BotHandlers {
 
     let clientNotified = false;
     const clientText = this.t(order.userId).CLIENT_STATUS_MESSAGES[status];
+    // Агент супроводжує замовлення: знає стрічку статусів, а повідомлення клієнту може написати живою мовою
+    const agentOrder = this.agentOrder(order);
     if (notifyClient && clientText) {
       try {
-        await this.send(order.userId, clientText(order.id), this.withClientApp(null, order.id, order.userId));
+        const fallback = clientText(order.id);
+        const live = await orderUpdate(order.userId, agentOrder, fallback.replace(/<[^>]+>/g, ''), true);
+        await this.send(order.userId, live ? escapeHtml(live) : fallback, this.withClientApp(null, order.id, order.userId));
         clientNotified = true;
       } catch (err) {
         log.warn(`Не вдалося повідомити клієнта ${order.userId} про заявку #${orderNo(order.id)}: ${err.message}`);
@@ -1999,10 +2004,27 @@ export class BotHandlers {
     if (released?.gift && (notifyClient || status === 'cancelled')) {
       await this.send(order.userId, this.t(order.userId).giftReturned(released.gift)).catch(() => {});
     }
+    if (!clientNotified) orderUpdate(order.userId, agentOrder).catch(() => {});
     // Замовлення готове — просимо оцінку (лише якщо клієнту повідомили)
     if (status === 'done' && clientNotified) await this.reviews.ask(order);
     log.info(`Заявка #${orderNo(order.id)}: статус «${T.STATUS_LABELS[status]}» (${who})`);
     return { clientNotified, released, lost };
+  }
+
+  /** Замовлення для агента GenAgent: номер, що замовили, статус і факти (строк, ціна). */
+  agentOrder(order) {
+    const what = order.service && order.service !== 'stickers'
+      ? (findService(order.service)?.name || order.service)
+      : ['стікерпак', order.stickerType, order.quantity].filter(Boolean).join(', ');
+    const st = order.studio || {};
+    const facts = [st.deadline ? `Строк: ${st.deadline}` : '', st.price ? `Ціна: ${st.price}` : ''].filter(Boolean).join('; ');
+    return {
+      id: `#${orderNo(order.id)}`,
+      title: String(what).slice(0, 120),
+      status: order.status,
+      label: (T.STATUS_LABELS[order.status] || order.status).replace(/^\S+\s/, ''),
+      ...(facts ? { facts: facts.slice(0, 600) } : {}),
+    };
   }
 
   /** Перемальовує картки заявки в Telegram (власника й дизайнера): статус, ескізи, кнопки. */
