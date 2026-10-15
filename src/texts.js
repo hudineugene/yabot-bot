@@ -923,6 +923,7 @@ export function studioQuestionHeader(from) {
 
 // --- Бриф із розмови з ІІ-помічником ---
 export const AI_BRIEF_BUTTON = '🚀 Розпочати бриф';
+export const SITE_CONTINUED = 'Продовжимо тут 🙂 Я памʼятаю нашу розмову на сайті — пишіть, на чому зупинились, або оберіть дію в меню.';
 export const AI_QUOTE_BUTTON = '🚀 Оформити замовлення';
 export const aiQuoteLine = (label, price) =>
   `\n\n💰 <b>${label}</b> — ${price}\n<i>Точну ціну підтвердить дизайнер після брифу.</i>`;

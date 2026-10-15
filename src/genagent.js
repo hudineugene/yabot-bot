@@ -193,6 +193,27 @@ export async function askAgent(from, text, context) {
  * Розшифрувати голосове людини (OGG/Opus з Telegram) — GenAgent робить це на нашому сервері, без оплати за хвилини.
  * Повертає { text } (text: null — слів не розібрати) з reason, або null, якщо помічник вимкнений чи GenAgent недоступний.
  */
+/**
+ * Людина прийшла з чату на сайті («Продовжити в Telegram», /start w_<код>): GenAgent переносить розмову
+ * із сайту в розмову бота — помічник продовжує з того ж місця. true — перенесено.
+ */
+export async function linkFromSite(token, from) {
+  const s = chatOn();
+  if (!s || !token) return false;
+  try {
+    const res = await fetch(`${s.url}/link`, {
+      method: 'POST', headers: authHeaders(s),
+      body: JSON.stringify({ token, user: { id: from.id, name: [from.first_name, from.last_name].filter(Boolean).join(' ').slice(0, 200), username: from.username } }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`ответ ${res.status}`);
+    return Boolean((await res.json()).linked);
+  } catch (err) {
+    log.warn(`GenAgent (перехід із сайту): ${err.message}`);
+    return false;
+  }
+}
+
 export const VOICE_MAX_SEC = 120;
 export async function transcribeVoice(audio, userId) {
   const s = chatOn();

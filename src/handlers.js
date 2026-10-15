@@ -35,7 +35,7 @@ import { findPromo, usePromo, promoList } from './promos.js';
 import { CLOSED, releaseBenefits, reclaimBenefits, describeReleased } from './benefits.js';
 import { isOpen, remaining, memberByChat, memberById, assigneeOf, dateText } from './orders.js';
 import * as T from './texts.js';
-import { forwardComment, askAgent, chatOn, addAiHistory, sendAgentEvent, ratingKeyboard, extractFromAgent, talkedRecently, transcribeVoice, VOICE_MAX_SEC } from './genagent.js';
+import { forwardComment, askAgent, chatOn, addAiHistory, sendAgentEvent, ratingKeyboard, extractFromAgent, talkedRecently, transcribeVoice, VOICE_MAX_SEC, linkFromSite } from './genagent.js';
 
 const FLOW = ['type', 'qty', 'hero', 'style', 'emotions', 'refs', 'contact', 'confirm'];
 // Розділи бота, які ІІ-помічник може показати кнопкою під відповіддю: код → назва кнопки в текстах
@@ -328,7 +328,8 @@ export class BotHandlers {
     if (/^ref_[0-9a-z]{1,12}$/.test(payload)) {
       referrer = parseInt(payload.slice(4), 36);
       source = 'ref';
-    } else if (/^[A-Za-z0-9_-]{1,64}$/.test(payload)) source = payload;
+    } else if (/^w_[A-Za-z0-9]{8,40}$/.test(payload)) source = 'site'; // «Продовжити в Telegram» з чату на сайті
+    else if (/^[A-Za-z0-9_-]{1,64}$/.test(payload)) source = payload;
     const isNew = this.touchUser(m.from, source, referrer);
     const userId = String(m.from.id);
     // Перехід з поста в каналі (?start=p_<id>) — для статистики поста
@@ -340,6 +341,11 @@ export class BotHandlers {
 
     if (cmd === 'start') {
       delete this.data.drafts[userId];
+      // Перехід із чату на сайті: розмова переноситься в бота, помічник продовжує з того ж місця
+      if (/^w_[A-Za-z0-9]{8,40}$/.test(payload) && (await linkFromSite(payload.slice(2), m.from))) {
+        await this.send(chatId, L.SITE_CONTINUED, L.mainMenu());
+        return;
+      }
       // Привітальний текст після «Старт» можна вимкнути: тоді в людини лише кнопка YABOT.
       // Без увімкненої Mini App мовчати не можна — тоді в людини не було б жодної кнопки.
       const app = this.data.config.miniapp;

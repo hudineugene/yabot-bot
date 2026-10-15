@@ -672,6 +672,7 @@ export const STUDIO_ANSWER = '💬 <b>YABOT studio</b>';
 
 // --- Brief from the AI assistant conversation ---
 export const AI_BRIEF_BUTTON = '🚀 Start the brief';
+export const SITE_CONTINUED = "Let's continue here 🙂 I remember our chat on the website — just pick up where we left off, or choose an action in the menu.";
 export const AI_QUOTE_BUTTON = '🚀 Place the order';
 export const aiQuoteLine = (label, price) =>
   `\n\n💰 <b>${label}</b> — ${price}\n<i>The designer will confirm the exact price after the brief.</i>`;
