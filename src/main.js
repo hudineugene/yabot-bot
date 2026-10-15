@@ -13,6 +13,7 @@ import { ChannelPoster } from './channel.js';
 import { MiniServer } from './miniapp/server.js';
 import { sendTelegramBackup } from './tgbackup.js';
 import { startGenagentSync } from './genagent.js';
+import { startJournal } from './journal.js';
 
 // До Telegram — через IPv4: на сервері з'єднання по IPv6 кілька разів на день «зависають»
 // (боти без IPv6 на тому ж сервері таких обривів не мають).
@@ -109,6 +110,7 @@ class Runtime {
 
     // Ціни, послуги й FAQ — у базу знань ІІ-агента студії (якщо підключено на сторінці бота)
     this.genagentTimer = startGenagentSync(() => (this.ready && !this.stopping ? this.tg : null));
+    this.journalTimer = startJournal();
 
     if (!store.configured) this.selfCheck(null);
     this.pollLoop();
@@ -200,7 +202,7 @@ class Runtime {
         const updates = await this.tg.call('getUpdates', {
           offset: store.data.telegramOffset,
           timeout: 50,
-          allowed_updates: ['message', 'callback_query'],
+          allowed_updates: ['message', 'callback_query', 'edited_message', 'message_reaction'],
         }, { timeoutMs: 65000, signal: this.abort.signal });
 
         retried = false;
@@ -254,6 +256,7 @@ class Runtime {
     clearInterval(this.reminderTimer);
     clearInterval(this.paymentTimer);
     this.genagentTimer?.close();
+    this.journalTimer?.close();
     clearInterval(this.channels?.timer);
     this.server?.close();
     // Клієнт міг саме відправити бриф (PDF, файли) — даємо обробці завершитися, щоб не втратити зміни

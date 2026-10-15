@@ -20,6 +20,7 @@ import { clientReplyTime } from '../sla.js';
 import { stagePlanView } from '../payments.js';
 import { fixAllowed, openFix } from '../fixes.js';
 import { chatOn, aiHistory } from '../genagent.js';
+import { recordApp } from '../journal.js';
 
 const AI_DAILY = 10; // ІІ-підказок на день на клієнта (спільний лічильник із ботом)
 const aiBusy = new Set();
@@ -518,6 +519,7 @@ export class MiniApi {
     const text = clean(body.text, MAX_TEXT);
     if (!text) throw new MiniError(lang(from.id, 'Напишіть повідомлення.', 'Type a message.'));
     this.h.touchUser(from);
+    recordApp(from.id, 'in', text); // журнал переписки: повідомлення з Mini App
     await this.h.relayToStudio({ message_id: null, from, chat: { id: from.id, type: 'private' }, text }, o);
     return { ok: true };
   }
@@ -665,7 +667,10 @@ export class MiniApi {
       await this.question(from, { text });
       return { relayed: Boolean(open), forwarded: !open, messages: aiHistory(from.id) };
     }
-    const r = await this.h.consult(null, from, text, 'Клієнт пише в Mini App бота (міні-застосунок).');
+    // Журнал переписки: питання з Mini App — з тим самим номером, що отримає помічник; відповідь помічника теж
+    const journalId = recordApp(from.id, 'in', text);
+    const r = await this.h.consult(null, from, text, 'Клієнт пише в Mini App бота (міні-застосунок).', journalId);
+    if (r?.reply) recordApp(from.id, 'out', r.reply, { by: 'agent' });
     if (!r) {
       // Помічник не відповів — передаємо питання студії, як раніше
       const ok = await this.h.forwardQuestion(from.id, from, text);
@@ -682,6 +687,7 @@ export class MiniApi {
     const text = clean(body.text, 1000);
     if (text.length < 3) throw new MiniError(lang(from.id, 'Напишіть питання.', 'Type your question.'));
     this.h.touchUser(from);
+    recordApp(from.id, 'in', text); // журнал переписки: питання з Mini App
     const open = this.data.inquiries.filter((o) => o.userId === from.id && isOpen(o)).at(-1);
     if (open) {
       // Є відкрите замовлення — питання йде дизайнеру як звичайне повідомлення по ньому

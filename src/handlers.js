@@ -35,6 +35,7 @@ import { findPromo, usePromo, promoList } from './promos.js';
 import { CLOSED, releaseBenefits, reclaimBenefits, describeReleased } from './benefits.js';
 import { isOpen, remaining, memberByChat, memberById, assigneeOf, dateText } from './orders.js';
 import * as T from './texts.js';
+import { recordIncoming, recordCallback, incomingId, asAuthor, recordReaction, recordEdit } from './journal.js';
 import { forwardComment, askAgent, chatOn, addAiHistory, sendAgentEvent, ratingKeyboard, extractFromAgent, talkedRecently, transcribeVoice, VOICE_MAX_SEC, linkFromSite, managerTalking, logToAgent, mediaLabel } from './genagent.js';
 
 const FLOW = ['type', 'qty', 'hero', 'style', 'emotions', 'refs', 'contact', 'confirm'];
@@ -270,6 +271,11 @@ export class BotHandlers {
   // --- Вхідні оновлення ---
 
   async handleUpdate(update) {
+    // Журнал переписки для «Діалогів» GenAgent — усе, що людина надіслала, ще до будь-яких сценаріїв
+    if (update.message) recordIncoming(update.message);
+    else if (update.callback_query) recordCallback(update.callback_query);
+    else if (update.message_reaction) return void recordReaction(update.message_reaction);
+    else if (update.edited_message) return void recordEdit(update.edited_message);
     this.data.stats.messagesReceived++;
     this.data.stats.lastUpdateAt = new Date().toISOString();
     // Заблокованих студією бот мовчки ігнорує (крім чатів самої студії)
@@ -301,13 +307,14 @@ export class BotHandlers {
     const isOwner = this.isOwnerChat(chatId);
     const isStudioChat = isOwner || (m.chat.type === 'private' && Boolean(this.memberOfChat(chatId)));
     // Швидкі відповіді: /r — список, /r 2 у відповідь на повідомлення клієнта — надіслати шаблон
-    if (isStudioChat && (cmd === 'r' || cmd === 'replies')) return void (await this.onQuickReplyCommand(m, command[2]));
+    if (isStudioChat && (cmd === 'r' || cmd === 'replies')) return void (await asAuthor('manager', () => this.onQuickReplyCommand(m, command[2])));
     // Команди студії: /today, /orders, /find, /o, /stats, /help
     if (isStudioChat && ['today', 'orders', 'find', 'o', 'stats', 'help', 'quote', 'due', 'price', 'pay'].includes(cmd)
       && (await this.studio.handle(m, cmd, command[2], this.memberOfChat(chatId)))) return;
     // Відповідь студії клієнту: «Відповісти» на його повідомлення чи на картку заявки
-    if (isStudioChat && m.reply_to_message && !cmd && (await this.onStudioReply(m))) return;
-    if (isOwner && m.reply_to_message && !cmd && (await this.onQuestionReply(m))) return;
+    // Відповіді студії людині — у журналі переписки як від менеджера
+    if (isStudioChat && m.reply_to_message && !cmd && (await asAuthor('manager', () => this.onStudioReply(m)))) return;
+    if (isOwner && m.reply_to_message && !cmd && (await asAuthor('manager', () => this.onQuestionReply(m)))) return;
     // Власник вводить суму рахунку
     if (isOwner && this.data.paySession && !cmd && (await this.payments.captureStudio(m))) return;
     // Збір ескізів для клієнта — файли й коментар ідуть у чернетку ескізів цього чату
@@ -409,7 +416,7 @@ export class BotHandlers {
     if (!isStudioChat && !text && m.voice && chatOn() && (await this.answerVoice(m))) return;
     // Стікер, фото тощо від людини без заявки — у «Діалоги» GenAgent позначкою (помічник на це не відповідає)
     if (!isStudioChat && !text && chatOn()) {
-      void logToAgent(m.from, 'media', mediaLabel(m));
+      void logToAgent(m.from, 'media', mediaLabel(m), incomingId(m));
       if (managerTalking(m.from.id)) {
         await this.tg.call('setMessageReaction', { chat_id: chatId, message_id: m.message_id, reaction: [{ type: 'emoji', emoji: '👀' }] }).catch(() => {});
         return;
@@ -429,13 +436,13 @@ export class BotHandlers {
     const audio = await this.tg.download(m.voice.file_id).catch((err) => log.warn(`Голосове не завантажилось: ${err.message}`));
     const r = audio ? await transcribeVoice(audio, m.from.id) : null;
     if (!r?.text) {
-      void logToAgent(m.from, 'media', mediaLabel(m)); // у «Діалогах» видно, що людина щось надіслала
+      void logToAgent(m.from, 'media', mediaLabel(m), incomingId(m)); // у «Діалогах» видно, що людина щось надіслала
       await this.send(m.chat.id, r?.reason === 'too_long' ? L.MSG.voiceTooLong : r?.reason === 'no_speech' ? L.MSG.voiceUnclear : L.MSG.voiceFailed);
       return true;
     }
     await this.send(m.chat.id, `🎙 <i>${escapeHtml(r.text)}</i>`);
     if (r.text.length < 3) return false;
-    return this.answerQuestion({ ...m, text: r.text });
+    return this.answerQuestion({ ...m, text: r.text, journalId: `${incomingId(m)}:text` });
   }
 
   // --- Часті питання ---
@@ -455,17 +462,17 @@ export class BotHandlers {
    * Питання людини без замовлення до ІІ-помічника (агент GenAgent). Повертає { reply, handoff } або null,
    * якщо помічник вимкнений чи не відповів. Потрібен менеджер — питання йде студії разом із підсумком розмови.
    */
-  async consult(chatId, from, text, context) {
+  async consult(chatId, from, text, context, messageId) {
     if (!chatOn()) return null;
     // Розмову веде менеджер з GenAgent — помічник мовчить, повідомлення йде менеджеру в «Діалоги»
     if (managerTalking(from.id)) {
       addAiHistory(from.id, 'client', text);
       store.save();
-      void logToAgent(from, 'user', text);
+      void logToAgent(from, 'user', text, messageId);
       return { reply: null, handoff: true, manager: true, actions: [] };
     }
     if (chatId) this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
-    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'));
+    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId);
     if (!r) return null;
     addAiHistory(from.id, 'client', text);
     if (r.reply) addAiHistory(from.id, 'ai', r.reply);
@@ -551,10 +558,12 @@ export class BotHandlers {
     const L = this.t(m.from.id);
     const user = this.data.users[String(m.from.id)];
     if (user) user.lastQuestion = m.text.slice(0, 1000);
-    const ai = await this.consult(m.chat.id, m.from, m.text);
+    // Номер у журналі: те саме повідомлення, що вже записане журналом (голосове — окремий запис для розшифровки)
+    const messageId = m.journalId || (m.message_id ? incomingId(m) : undefined);
+    const ai = await this.consult(m.chat.id, m.from, m.text, undefined, messageId);
     if (ai?.reply) {
       const quote = this.aiQuote(m.from.id, ai.actions);
-      await this.send(m.chat.id, escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : ''), this.aiMarkup(m.from.id, ai.actions || []));
+      await asAuthor('agent', () => this.send(m.chat.id, escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : ''), this.aiMarkup(m.from.id, ai.actions || [])));
       return true;
     }
     if (ai?.manager) {
@@ -1295,7 +1304,7 @@ export class BotHandlers {
       await this.answer(cb);
       await this.tg.call('editMessageReplyMarkup', { chat_id: msg.chat.id, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
       await this.send(msg.chat.id, '💬 <i>' + escapeHtml(text) + '</i>');
-      const answered = await this.answerQuestion({ message_id: null, from: cb.from, chat: msg.chat, text });
+      const answered = await this.answerQuestion({ message_id: null, from: cb.from, chat: msg.chat, text, journalId: `cb:${cb.id}` });
       if (!answered) await this.send(msg.chat.id, L.MSG.notUnderstood, L.mainMenu());
       return;
     }
@@ -2277,7 +2286,12 @@ export class BotHandlers {
   }
 
   /** Повідомлення клієнту від студії (зі сторінки бота або швидкою відповіддю в Telegram). by — ім'я дизайнера. */
-  async messageClient(order, text, via = 'page', by = null) {
+  /** Повідомлення студії людині по замовленню (сторінка бота, Mini App студії, заплановані) — у журналі як від менеджера. */
+  messageClient(order, text, via = 'page', by = null) {
+    return asAuthor('manager', () => this.sendClientMessage(order, text, via, by));
+  }
+
+  async sendClientMessage(order, text, via = 'page', by = null) {
     await this.send(order.userId, `${this.t(order.userId).designerHeader(order)}\n\n${escapeHtml(text)}`);
     (order.messages ||= []).push({ at: new Date().toISOString(), from: 'studio', via, ...(by ? { by } : {}), text });
     order.unread = 0;

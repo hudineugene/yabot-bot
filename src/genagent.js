@@ -11,6 +11,7 @@ import { faqList } from './faq.js';
 import { PRICE_TYPE_KEYS, PRICE_QTY_KEYS, priceFor } from './texts.js';
 import { textsFor } from './lang.js';
 import { escapeHtml } from './util.js';
+import { asAuthor } from './journal.js';
 
 const SYNC_EVERY_MS = 5 * 60 * 1000;
 const RESEND_MS = 6 * 60 * 60 * 1000; // навіть без змін — раз на 6 год (якщо базу в агенті почистили)
@@ -160,7 +161,7 @@ export function addAiHistory(userId, from, text) {
  * Запитати агента. Повертає { reply, handoff, summary } або null (вимкнено, агент недоступний чи не відповів) —
  * тоді бот поводиться як раніше: частi питання й передача питання студії.
  */
-export async function askAgent(from, text, context) {
+export async function askAgent(from, text, context, messageId) {
   const s = chatOn();
   if (!s) return null;
   try {
@@ -171,6 +172,8 @@ export async function askAgent(from, text, context) {
         user: { id: from.id, name: [from.first_name, from.last_name].filter(Boolean).join(' ').slice(0, 200), username: from.username },
         text: String(text).slice(0, 4000),
         ...(context ? { context: String(context).slice(0, 2000) } : {}),
+        // номер у журналі переписки (journal.js) — щоб GenAgent не записав це повідомлення двічі
+        ...(messageId ? { messageId } : {}),
       }),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
@@ -208,7 +211,7 @@ export function managerTalking(userId, now = Date.now()) {
  * Записати в «Діалоги» GenAgent те, що агенту не надсилалось: user — людина пише, поки розмову веде менеджер;
  * media — людина надіслала не текст (стікер, фото…), text — підпис на кшталт «Стикер». Агент на це не відповідає.
  */
-export async function logToAgent(from, role, text) {
+export async function logToAgent(from, role, text, messageId) {
   const s = chatOn();
   if (!s || !from?.id) return false;
   try {
@@ -219,6 +222,7 @@ export async function logToAgent(from, role, text) {
         user: { id: from.id, name: [from.first_name, from.last_name].filter(Boolean).join(' ').slice(0, 200) || undefined, username: from.username },
         role,
         text: String(text || '').slice(0, 4000),
+        ...(messageId ? { messageId } : {}),
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -241,7 +245,7 @@ async function sendManagerReply(tg, item) {
   const user = store.data.users[String(item.userId)];
   if (!user) return { error: 'людини немає в боті' };
   try {
-    const sent = await tg.call('sendMessage', { chat_id: item.userId, text: `${textsFor(item.userId).STUDIO_ANSWER}\n\n${escapeHtml(item.text)}`, parse_mode: 'HTML' });
+    const sent = await asAuthor('manager', () => tg.call('sendMessage', { chat_id: item.userId, text: `${textsFor(item.userId).STUDIO_ANSWER}\n\n${escapeHtml(item.text)}`, parse_mode: 'HTML' }));
     user.managerAt = new Date().toISOString();
     addAiHistory(item.userId, 'studio', item.text);
     store.save();
@@ -410,11 +414,11 @@ async function sendFollowUp(tg, item) {
   if (store.data.drafts[String(item.userId)]) return { error: 'людина саме заповнює бриф' };
   try {
     const en = user.lang === 'en';
-    const sent = await tg.call('sendMessage', {
+    const sent = await asAuthor('agent', () => tg.call('sendMessage', {
       chat_id: item.userId,
       text: item.text,
       reply_markup: { inline_keyboard: [[{ text: en ? '🚀 Start the brief' : '🚀 Розпочати бриф', callback_data: 'brief_start' }]] },
-    });
+    }));
     addAiHistory(item.userId, 'ai', item.text);
     store.save();
     return { messageId: sent.message_id };

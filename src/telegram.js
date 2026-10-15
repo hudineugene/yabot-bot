@@ -36,7 +36,11 @@ export class Telegram {
         throw e;
       }
       const json = await res.json().catch(() => ({ ok: false, description: `HTTP ${res.status}` }));
-      if (json.ok) return json.result;
+      if (json.ok) {
+        // Журнал переписки (journal.js): що бот надіслав людині
+        try { Telegram.onSent?.(method, params, json.result); } catch { /* журнал не заважає надсиланню */ }
+        return json.result;
+      }
       const retryAfter = json.parameters?.retry_after;
       if (res.status === 429 && retryAfter && attempt < 2 && retryAfter <= 30) {
         await new Promise((r) => setTimeout(r, retryAfter * 1000));
