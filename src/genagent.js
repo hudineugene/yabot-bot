@@ -207,7 +207,7 @@ export function teamNow(userId, now = new Date()) {
  * Запитати агента. Повертає { reply, handoff, summary } або null (вимкнено, агент недоступний чи не відповів) —
  * тоді бот поводиться як раніше: частi питання й передача питання студії.
  */
-export async function askAgent(from, text, context, messageId, image) {
+export async function askAgent(from, text, context, messageId, image, earlier) {
   const s = chatOn();
   if (!s) return null;
   try {
@@ -224,6 +224,8 @@ export async function askAgent(from, text, context, messageId, image) {
         ...(image ? { image } : {}),
         // чи працює студія зараз — помічник назве чесний строк, коли передає людину студії
         team: teamNow(from.id),
+        // людина написала кілька повідомлень поспіль: попередні (кожне зі своїм номером у журналі), відповідь — одна на всі
+        ...(earlier?.length ? { earlier: earlier.slice(-10).map((e) => ({ text: String(e.text).slice(0, 4000), ...(e.messageId ? { messageId: e.messageId } : {}) })) } : {}),
       }),
       signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });

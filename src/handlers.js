@@ -410,8 +410,12 @@ export class BotHandlers {
       return;
     }
     if (isStudioChat && m.reply_to_message) return void (await this.send(chatId, T.STUDIO_REPLY_HINT));
-    // Людина без заявки щось питає — шукаємо відповідь у частих питаннях, інакше передаємо студії
-    if (!isStudioChat && !cmd && text && text.length >= 3 && (await this.answerQuestion(m))) return;
+    // Людина без заявки щось питає — шукаємо відповідь у частих питаннях, інакше передаємо студії.
+    // З помічником — чекаємо, поки людина допише (кілька повідомлень поспіль → одна відповідь).
+    if (!isStudioChat && !cmd && text && text.length >= 3) {
+      if (chatOn() && !managerTalking(m.from.id)) return void this.queueQuestion(m);
+      if (await this.answerQuestion(m)) return;
+    }
     // Голосове людини без заявки — розшифровуємо й відповідаємо, як на текст
     if (!isStudioChat && !text && m.voice && chatOn() && (await this.answerVoice(m))) return;
     // Фото людини без заявки — помічник дивиться на нього й відповідає (і запам'ятовує як референс для брифу)
@@ -487,21 +491,23 @@ export class BotHandlers {
    * Питання людини без замовлення до ІІ-помічника (агент GenAgent). Повертає { reply, handoff } або null,
    * якщо помічник вимкнений чи не відповів. Потрібен менеджер — питання йде студії разом із підсумком розмови.
    */
-  async consult(chatId, from, text, context, messageId, image) {
+  async consult(chatId, from, text, context, messageId, image, earlier = []) {
     if (!chatOn()) return null;
+    const whole = [...earlier.map((e) => e.text), text].join('\n');
     // Розмову веде менеджер з GenAgent — помічник мовчить, повідомлення йде менеджеру в «Діалоги»
     if (managerTalking(from.id)) {
-      addAiHistory(from.id, 'client', text);
+      addAiHistory(from.id, 'client', whole);
       store.save();
+      for (const e of earlier) void logToAgent(from, 'user', e.text, e.messageId);
       void logToAgent(from, 'user', text, messageId);
       return { reply: null, handoff: true, manager: true, actions: [] };
     }
     if (chatId) this.tg.call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
-    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId, image);
+    const r = await askAgent(from, text, [context, this.clientProfile(from.id)].filter(Boolean).join('\n\n'), messageId, image, earlier);
     if (!r) return null;
-    addAiHistory(from.id, 'client', image ? `📷 ${text}`.trim() : text);
+    addAiHistory(from.id, 'client', image ? `📷 ${text}`.trim() : whole);
     if (r.reply) addAiHistory(from.id, 'ai', r.reply);
-    if (r.handoff) await this.forwardQuestion(from.id, from, text, { summary: r.summary, quiet: Boolean(r.reply), upset: r.upset });
+    if (r.handoff) await this.forwardQuestion(from.id, from, whole, { summary: r.summary, quiet: Boolean(r.reply), upset: r.upset });
     store.save();
     return r;
   }
@@ -579,13 +585,59 @@ export class BotHandlers {
   }
 
   /** Повертає true, якщо відповіли (помічник або часті питання) чи передали питання студії. */
-  async answerQuestion(m) {
+  /**
+   * Кілька повідомлень поспіль («Привіт» / «хочу пак» / «з котом»): чекаємо 2,5 с тиші (не довше 8 с від першого)
+   * і питаємо помічника один раз про все. Людина бачить «друкує…». Пачки однієї людини — по черзі.
+   */
+  queueQuestion(m) {
+    const key = String(m.from.id);
+    const pending = (this.pendingQuestions ||= new Map());
+    const runs = (this.questionRuns ||= new Map());
+    const cur = pending.get(key) || { items: [], first: Date.now(), timer: null };
+    cur.items.push(m);
+    clearTimeout(cur.timer);
+    pending.set(key, cur);
+    this.tg.call('sendChatAction', { chat_id: m.chat.id, action: 'typing' }).catch(() => {});
+    const quiet = this.questionQuietMs ?? 2500;
+    const wait = Math.max(0, Math.min(quiet, cur.first + (this.questionMaxMs ?? 8000) - Date.now()));
+    cur.timer = setTimeout(() => {
+      pending.delete(key);
+      const last = cur.items.at(-1);
+      const earlier = cur.items.slice(0, -1).map((x) => ({ text: x.text, messageId: x.journalId || (x.message_id ? incomingId(x) : undefined) }));
+      const run = (runs.get(key) || Promise.resolve()).then(async () => {
+        try {
+          if (!(await this.answerQuestion(last, earlier))) await this.send(last.chat.id, this.t(last.from.id).MSG.notUnderstood, this.t(last.from.id).mainMenu());
+        } catch (err) {
+          log.warn(`Відповідь помічника не надіслано: ${err.message}`);
+        }
+      });
+      runs.set(key, run);
+      run.finally(() => { if (runs.get(key) === run) runs.delete(key); });
+    }, wait);
+  }
+
+  /** Дочекатися відповідей на всі пачки, що вже чекають (зупинка бота, перевірки). */
+  async settleQuestions() {
+    for (const cur of (this.pendingQuestions || new Map()).values()) clearTimeout(cur.timer);
+    const left = [...(this.pendingQuestions || new Map()).values()];
+    this.pendingQuestions?.clear();
+    for (const cur of left) {
+      const last = cur.items.at(-1);
+      const earlier = cur.items.slice(0, -1).map((x) => ({ text: x.text, messageId: x.journalId || (x.message_id ? incomingId(x) : undefined) }));
+      await this.answerQuestion(last, earlier).catch(() => {});
+    }
+    await Promise.all([...(this.questionRuns || new Map()).values()]);
+  }
+
+  async answerQuestion(m, earlier = []) {
     const L = this.t(m.from.id);
     const user = this.data.users[String(m.from.id)];
-    if (user) user.lastQuestion = m.text.slice(0, 1000);
+    // Уся пачка одним текстом — для частих питань, передачі студії й історії
+    const whole = [...earlier.map((e) => e.text), m.text].join('\n');
+    if (user) user.lastQuestion = whole.slice(0, 1000);
     // Номер у журналі: те саме повідомлення, що вже записане журналом (голосове — окремий запис для розшифровки)
     const messageId = m.journalId || (m.message_id ? incomingId(m) : undefined);
-    const ai = await this.consult(m.chat.id, m.from, m.text, undefined, messageId);
+    const ai = await this.consult(m.chat.id, m.from, m.text, undefined, messageId, undefined, earlier);
     if (ai?.reply) {
       const quote = this.aiQuote(m.from.id, ai.actions);
       await asAuthor('agent', () => this.send(m.chat.id, escapeHtml(ai.reply) + (quote ? L.aiQuoteLine(escapeHtml(quote.label), escapeHtml(quote.price)) : ''), this.aiMarkup(m.from.id, ai.actions || [])));
@@ -597,7 +649,7 @@ export class BotHandlers {
       return true;
     }
     if (ai?.handoff) return true; // помічник одразу передав питання студії
-    const f = matchFaq(m.text);
+    const f = matchFaq(whole);
     if (f) {
       const st = this.faqStats();
       st.matched++;
@@ -605,7 +657,7 @@ export class BotHandlers {
       await this.send(m.chat.id, L.faqAnswer(f), L.faqAnswerKeyboard());
       return true;
     }
-    return this.forwardQuestion(m.chat.id, m.from, m.text);
+    return this.forwardQuestion(m.chat.id, m.from, whole);
   }
 
   /**

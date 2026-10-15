@@ -261,6 +261,8 @@ class Runtime {
     this.server?.close();
     // Клієнт міг саме відправити бриф (PDF, файли) — даємо обробці завершитися, щоб не втратити зміни
     if (this.current) await Promise.race([this.current.catch(() => {}), sleep(STOP_WAIT_MS)]);
+    // Пачки повідомлень, що чекають відповіді помічника, — відповідаємо зараз, а не губимо
+    await Promise.race([this.handlers.settleQuestions?.().catch(() => {}), sleep(STOP_WAIT_MS)]);
     try { store.saveNow(); } catch (err) { log.error(`Не удалось сохранить данные: ${err.message}`); }
     setTimeout(() => process.exit(0), 500).unref();
   }
