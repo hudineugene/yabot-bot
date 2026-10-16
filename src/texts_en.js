@@ -91,13 +91,27 @@ export function workCard(item) {
   );
 }
 
-export const workKeyboard = (item) => ({
+export const workKeyboard = (item, share = null) => ({
   inline_keyboard: [
     [{ text: '➕ Add sticker pack', url: `https://t.me/addstickers/${item.name}` }],
     [{ text: '🚀 I want the same', callback_data: `wo:${item.id}` }],
+    ...(share ? [[share]] : []),
     [{ text: '◀️ All works', callback_data: 'wl' }],
   ],
 });
+
+// --- Send a work to a friend (inline mode) ---
+
+export const SHARE_WORK = '📤 Send to a friend';
+export const shareText = (item) => `Look at the stickers YABOT studio draws — «${item.title}». You can order the same with your own character 🎨`;
+export const INLINE_ADD_PACK = '➕ Add sticker pack';
+export const INLINE_WANT_SAME = '🚀 I want the same';
+export const INLINE_STUDIO_TITLE = 'YABOT sticker studio';
+export const INLINE_STUDIO_DESCRIPTION = 'A sticker pack with your character — send an invitation';
+export const INLINE_STUDIO_TEXT = '🎨 <b>YABOT</b> is a sticker studio. They draw a sticker pack with your character: a pet, a friend or a mascot.';
+export const INLINE_STUDIO_BUTTON = '🚀 I want my own stickers';
+export const sharedWorkIntro = (item) =>
+  `👋 Someone sent you a work by the studio — «<b>${escapeHtml(item.title)}</b>». Let's make the same kind of pack with your character! A few short questions 👇`;
 
 export const workOrderIntro = (item) =>
   `Nice pick! We'll use «<b>${escapeHtml(item.title)}</b>» as a reference — the designer will see it in your request 👌`;

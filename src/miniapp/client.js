@@ -636,7 +636,7 @@ export const CLIENT_JS = String.raw`
       createOrder: 'Створити замовлення', from: 'від', order: 'Замовити', next: 'Далі', back: 'Назад',
       catTitle: 'Каталог послуг', catSub: 'Оберіть напрям — і ми допоможемо стартувати швидко.', search: 'Пошук послуг…', nothing: 'Нічого не знайдено',
       tabAbout: 'Опис', tabIncludes: 'Що входить', tabSteps: 'Етапи', tabFaq: 'FAQ', examples: 'Приклади робіт', examplesStk: 'Приклади стікерів', seeAll: 'Дивитися всі', stickers: 'стікерів',
-      openPack: 'Відкрити пак', worksTitle: 'Наші роботи', noFaq: 'Питань поки немає — напишіть своє в профілі.',
+      openPack: 'Відкрити пак', shareWork: 'Надіслати другу', worksTitle: 'Наші роботи', noFaq: 'Питань поки немає — напишіть своє в профілі.',
       newOrder: 'Створити замовлення', newOrderSub: 'Розкажіть про ваш проєкт — ми підберемо найкраще рішення.',
       stService: 'Послуга', stDetails: 'Деталі', stRefs: 'Референси', stConfirm: 'Підтвердження',
       chooseService: 'Оберіть послугу',
@@ -689,7 +689,7 @@ export const CLIENT_JS = String.raw`
       createOrder: 'Create an order', from: 'from', order: 'Order', next: 'Next', back: 'Back',
       catTitle: 'Services', catSub: 'Pick a direction — we will help you start fast.', search: 'Search services…', nothing: 'Nothing found',
       tabAbout: 'About', tabIncludes: 'Included', tabSteps: 'Steps', tabFaq: 'FAQ', examples: 'Our works', examplesStk: 'Sticker examples', seeAll: 'See all', stickers: 'stickers',
-      openPack: 'Open pack', worksTitle: 'Our works', noFaq: 'No questions yet — ask yours in the profile.',
+      openPack: 'Open pack', shareWork: 'Send to a friend', worksTitle: 'Our works', noFaq: 'No questions yet — ask yours in the profile.',
       newOrder: 'Create an order', newOrderSub: 'Tell us about your project — we will find the best solution.',
       stService: 'Service', stDetails: 'Details', stRefs: 'References', stConfirm: 'Confirm',
       chooseService: 'Choose a service',
@@ -1144,8 +1144,19 @@ export const CLIENT_JS = String.raw`
         w.description ? el('p', { class: 'muted' }, w.description) : null,
         el('div', { class: 'row2' },
           el('button', { class: 'btn ghost small', onclick: function () { openPack(w.name); } }, el('span', null, t('openPack')), icon('external')),
-          svc('stickers') ? el('button', { class: 'btn small', onclick: function () { wantSame({ kind: 'pack', id: w.id }, (w.previews[0] || {}).thumb || (w.previews[0] || {}).url || '', w.title); } }, el('span', null, '✨ ' + t('likeBtn'))) : null));
+          svc('stickers') ? el('button', { class: 'btn small', onclick: function () { wantSame({ kind: 'pack', id: w.id }, (w.previews[0] || {}).thumb || (w.previews[0] || {}).url || '', w.title); } }, el('span', null, '✨ ' + t('likeBtn'))) : null),
+        canShare(w) ? el('button', { class: 'btn ghost small', onclick: function () { shareWork(w); } }, el('span', null, '📤 ' + t('shareWork'))) : null);
     }));
+  }
+
+  // Надіслати роботу другу: з інлайн-режимом — вибір чату й живий стікер, інакше — вікно «Поділитися»
+  function canShare(w) { return (S.shareInline && tg.switchInlineQuery) || Boolean(w.shareUrl); }
+  function shareWork(w) {
+    if (S.shareInline && tg.switchInlineQuery) {
+      try { tg.switchInlineQuery(w.title, ['users', 'groups']); return; } catch (e) { /* стара версія Telegram — далі посилання */ }
+    }
+    if (!w.shareUrl) return;
+    try { tg.openTelegramLink(w.shareUrl); } catch (e) { window.open(w.shareUrl, '_blank'); }
   }
 
   // ---------- сторінка послуги ----------

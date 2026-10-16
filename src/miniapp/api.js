@@ -21,6 +21,7 @@ import { stagePlanView } from '../payments.js';
 import { fixAllowed, openFix } from '../fixes.js';
 import { chatOn, aiHistory, transcribeWav } from '../genagent.js';
 import { recordApp } from '../journal.js';
+import { inlineEnabled, shareUrl } from '../share.js';
 
 const AI_DAILY = 10; // ІІ-підказок на день на клієнта (спільний лічильник із ботом)
 const aiBusy = new Set();
@@ -313,8 +314,11 @@ export class MiniApi {
       prices: { rows: priceRows, note: clean(prices.note, 500) },
       packages: activePackages().map((p) => ({ id: p.id, name: p.name, nameEn: p.nameEn || '', type: p.type, qty: p.qty, price: p.price, days: p.days || 0, items: p.items || '', itemsEn: p.itemsEn || '' })),
       styles: activeStyles().map((s) => ({ id: s.id, name: s.name, nameEn: s.nameEn || '', img: mediaUrl({ k: 'up', u: s.image }) })),
+      // Надіслати роботу другу: інлайн-режим (живий стікер) або вікно «Поділитися» з посиланням
+      shareInline: inlineEnabled(),
       works: catalog().map((c) => ({
         id: c.id, name: c.name, title: c.title, count: c.count, format: c.format, description: c.description || '',
+        shareUrl: shareUrl(c, textsFor(uid)) || '',
         // Відеостікер: саме відео + прозора мініатюра (iPhone/Mac не показують прозорість у WebM — їм мініатюра)
         previews: (c.previewIds || []).slice(0, 4).map((f) => ({
           url: mediaUrl({ k: 'st', f, s: c.name, fmt: c.format }), video: c.format === 'video',

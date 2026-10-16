@@ -113,13 +113,28 @@ export function workCard(item) {
   );
 }
 
-export const workKeyboard = (item) => ({
+// share — готова кнопка «Надіслати другу» (share.js: інлайн-режим або вікно «Поділитися»)
+export const workKeyboard = (item, share = null) => ({
   inline_keyboard: [
     [{ text: '➕ Додати стікерпак', url: `https://t.me/addstickers/${item.name}` }],
     [{ text: '🚀 Хочу такий самий', callback_data: `wo:${item.id}` }],
+    ...(share ? [[share]] : []),
     [{ text: '◀️ Усі роботи', callback_data: 'wl' }],
   ],
 });
+
+// --- Надіслати роботу другу (інлайн-режим) ---
+
+export const SHARE_WORK = '📤 Надіслати другу';
+export const shareText = (item) => `Глянь, які стікери малює студія YABOT — «${item.title}». Можна замовити такі самі зі своїм героєм 🎨`;
+export const INLINE_ADD_PACK = '➕ Додати стікерпак';
+export const INLINE_WANT_SAME = '🚀 Хочу такий самий';
+export const INLINE_STUDIO_TITLE = 'Студія стікерів YABOT';
+export const INLINE_STUDIO_DESCRIPTION = 'Стікерпак з вашим героєм — надіслати запрошення';
+export const INLINE_STUDIO_TEXT = '🎨 <b>YABOT</b> — студія стікерів. Намалюють стікерпак з вашим героєм: улюбленцем, другом чи персонажем.';
+export const INLINE_STUDIO_BUTTON = '🚀 Хочу свої стікери';
+export const sharedWorkIntro = (item) =>
+  `👋 Вам надіслали роботу студії — «<b>${escapeHtml(item.title)}</b>». Зробимо такий самий стікерпак з вашим героєм! Кілька коротких питань 👇`;
 
 export const worksListKeyboard = (items) => ({
   inline_keyboard: items.map((item) => [{ text: workButtonLabel(item), callback_data: `wv:${item.id}` }]),

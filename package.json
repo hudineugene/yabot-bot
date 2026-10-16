@@ -1,6 +1,6 @@
 {
   "name": "yabot-brief-bot",
-  "version": "4.1.6",
+  "version": "4.1.7",
   "description": "YABOT вЂ” Telegram-Р±РѕС‚ СЃС‚СѓРґС–С— СЃС‚С–РєРµСЂС–РІ: Р±СЂРёС„ РЅР° СЃС‚С–РєРµСЂРїР°Рє, PDF-Р±Р»Р°РЅРє, Р·Р°СЏРІРєРё РІР»Р°СЃРЅРёРєСѓ",
   "private": true,
   "type": "module",

@@ -165,7 +165,8 @@ class Runtime {
       }
       throw err;
     }
-    store.data.bot = { id: me.id, username: me.username, firstName: me.first_name };
+    // inline — чи ввімкнено інлайн-режим у @BotFather (кнопка «Надіслати другу» лише тоді)
+    store.data.bot = { id: me.id, username: me.username, firstName: me.first_name, inline: Boolean(me.supports_inline_queries) };
     await this.tg.call('deleteWebhook', { drop_pending_updates: false }).catch(() => {});
     await this.tg.call('setMyCommands', { commands: COMMANDS }).catch((err) => log.warn(`Команды меню не установлены: ${err.message}`));
     await this.tg.call('setMyCommands', { commands: COMMANDS_EN, language_code: 'en' }).catch(() => {});
@@ -202,7 +203,7 @@ class Runtime {
         const updates = await this.tg.call('getUpdates', {
           offset: store.data.telegramOffset,
           timeout: 50,
-          allowed_updates: ['message', 'callback_query', 'edited_message', 'message_reaction'],
+          allowed_updates: ['message', 'callback_query', 'edited_message', 'message_reaction', 'inline_query'],
         }, { timeoutMs: 65000, signal: this.abort.signal });
 
         retried = false;

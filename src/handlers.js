@@ -34,6 +34,7 @@ import { auditRecord } from './audit.js';
 import { Digest } from './digest.js';
 import { findPromo, usePromo, promoList } from './promos.js';
 import { CLOSED, releaseBenefits, reclaimBenefits, describeReleased } from './benefits.js';
+import { answerInline, shareButton, WORK_START } from './share.js';
 import { isOpen, remaining, memberByChat, memberById, assigneeOf, dateText } from './orders.js';
 import * as T from './texts.js';
 import { recordIncoming, recordCallback, incomingId, asAuthor, recordReaction, recordEdit } from './journal.js';
@@ -272,6 +273,8 @@ export class BotHandlers {
   // --- Вхідні оновлення ---
 
   async handleUpdate(update) {
+    // @бот у будь-якому чаті — роботи студії, щоб надіслати другу (у журнал розмов не пишемо: це не повідомлення боту)
+    if (update.inline_query) return void (await answerInline(this, update.inline_query));
     // Журнал переписки для «Діалогів» GenAgent — усе, що людина надіслала, ще до будь-яких сценаріїв
     if (update.message) recordIncoming(update.message);
     else if (update.callback_query) recordCallback(update.callback_query);
@@ -337,6 +340,7 @@ export class BotHandlers {
       referrer = parseInt(payload.slice(4), 36);
       source = 'ref';
     } else if (/^w_[A-Za-z0-9]{8,40}$/.test(payload)) source = 'site'; // «Продовжити в Telegram» з чату на сайті
+    else if (WORK_START.test(payload)) source = 'share'; // робота, яку надіслав друг (інлайн-режим)
     else if (/^[A-Za-z0-9_-]{1,64}$/.test(payload)) source = payload;
     const isNew = this.touchUser(m.from, source, referrer);
     const userId = String(m.from.id);
@@ -352,6 +356,15 @@ export class BotHandlers {
       // Перехід із чату на сайті: розмова переноситься в бота, помічник продовжує з того ж місця
       if (/^w_[A-Za-z0-9]{8,40}$/.test(payload) && (await linkFromSite(payload.slice(2), m.from))) {
         await this.send(chatId, L.SITE_CONTINUED, L.mainMenu());
+        return;
+      }
+      // Друг надіслав роботу студії — показуємо її й одразу починаємо бриф з нею за орієнтир
+      const shared = WORK_START.exec(payload);
+      const sharedItem = shared && findItem(shared[1]);
+      if (sharedItem) {
+        this.bump('shareStarts');
+        await this.send(chatId, L.sharedWorkIntro(sharedItem), L.mainMenu());
+        await this.startBrief(chatId, userId, { name: sharedItem.name, title: sharedItem.title });
         return;
       }
       // Привітальний текст після «Старт» можна вимкнути: тоді в людини лише кнопка YABOT.
@@ -1046,7 +1059,8 @@ export class BotHandlers {
         }
       }
     }
-    return this.send(chatId, this.t(chatId).workCard(item), this.t(chatId).workKeyboard(item));
+    const L = this.t(chatId);
+    return this.send(chatId, L.workCard(item), L.workKeyboard(item, shareButton(item, L)));
   }
 
   // --- Бриф ---
